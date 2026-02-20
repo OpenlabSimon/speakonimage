@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Account - a registered user
+model Account {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  speakers    Speaker[]
+  topics      Topic[]
+  submissions Submission[]
+}
+
+// Speaker - one account may have multiple speakers (family sharing)
+model Speaker {
+  id                  String   @id @default(uuid())
+  accountId           String
+  voiceprintEmbedding Float[]  @default([])
+  label               String   @default("Default")
+  languageProfile     Json     @default("{}")
+  createdAt           DateTime @default(now())
+  lastActiveAt        DateTime @default(now())
+
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  submissions     Submission[]
+  grammarErrors   GrammarError[]
+  vocabularyUsage VocabularyUsage[]
+}
+
+// Topic - a generated learning topic
+// Two types: 'translation' (中译英) and 'expression' (话题表达)
+model Topic {
+  id                 String   @id @default(uuid())
+  accountId          String
+  type               String   @default("translation") // 'translation' | 'expression'
+  originalInput      String   // User's input keywords/topic
+  topicContent       Json     // TranslationTopic or ExpressionTopic content
+  difficultyMetadata Json?
+  createdAt          DateTime @default(now())
+
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+
+  @@index([accountId, type])
+}
+
+// Submission - each user response
+model Submission {
+  id                   String   @id @default(uuid())
+  topicId              String
+  accountId            String
+  speakerId            String?
+  attemptNumber        Int
+  inputMethod          String   // 'voice' | 'text'
+  rawAudioUrl          String?
+  transcribedText      String
+  evaluation           Json     // TranslationEvaluationScores or ExpressionEvaluationScores
+  difficultyAssessment Json?
+  createdAt            DateTime @default(now())
+
+  topic           Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  speaker         Speaker?         @relation(fields: [speakerId], references: [id])
+  grammarErrors   GrammarError[]
+  vocabularyUsage VocabularyUsage[]
+}
+
+// GrammarError - track grammar errors for analysis
+model GrammarError {
+  id            String   @id @default(uuid())
+  submissionId  String
+  speakerId     String?
+  errorPattern  String
+  originalText  String?
+  correctedText String?
+  severity      String?  // 'low' | 'medium' | 'high'
+  createdAt     DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  speaker    Speaker?   @relation(fields: [speakerId], references: [id])
+}
+
+// VocabularyUsage - track vocabulary usage
+model VocabularyUsage {
+  id           String   @id @default(uuid())
+  submissionId String
+  speakerId    String?
+  word         String
+  wasFromHint  Boolean  @default(false)
+  usedCorrectly Boolean @default(true)
+  cefrLevel    String?
+  createdAt    DateTime @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  speaker    Speaker?   @relation(fields: [speakerId], references: [id])
+
+  @@index([speakerId, word])
+}
