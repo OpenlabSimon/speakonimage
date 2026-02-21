@@ -130,3 +130,31 @@ export async function requireAuth() {
   }
   return user;
 }
+
+/**
+ * Authentication result type for API routes
+ */
+export type AuthResult =
+  | { authenticated: true; user: { id: string; email?: string | null } }
+  | { authenticated: false; user: null };
+
+/**
+ * Check authentication for API routes - returns result instead of throwing
+ */
+export async function checkAuth(): Promise<AuthResult> {
+  const user = await getCurrentUser();
+  if (!user || !user.id) {
+    return { authenticated: false, user: null };
+  }
+  return { authenticated: true, user: { id: user.id, email: user.email } };
+}
+
+/**
+ * Create unauthorized response for API routes
+ */
+export function unauthorizedResponse(message = 'Authentication required') {
+  return Response.json(
+    { success: false, error: message },
+    { status: 401 }
+  );
+}

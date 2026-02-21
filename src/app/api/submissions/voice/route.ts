@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { prisma } from '@/lib/db';
-import { getCurrentUser } from '@/lib/auth';
+import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
 import { getLLMProvider } from '@/lib/llm';
 import {
@@ -55,8 +55,35 @@ export async function POST(request: NextRequest) {
     // Get topicId from form data (optional)
     const topicId = formData.get('topicId') as string | null;
 
-    // Get authenticated user (optional)
-    const user = await getCurrentUser();
+    // Check authentication
+    const authResult = await checkAuth();
+
+    // If topicId is provided, require authentication and validate ownership
+    if (topicId) {
+      if (!authResult.authenticated) {
+        return unauthorizedResponse('Authentication required to submit to a saved topic');
+      }
+
+      // Verify the topic belongs to this user
+      const topic = await prisma.topic.findUnique({
+        where: { id: topicId },
+        select: { accountId: true },
+      });
+
+      if (!topic) {
+        return NextResponse.json<ApiResponse<null>>(
+          { success: false, error: 'Topic not found' },
+          { status: 404 }
+        );
+      }
+
+      if (topic.accountId !== authResult.user.id) {
+        return NextResponse.json<ApiResponse<null>>(
+          { success: false, error: 'You do not have permission to submit to this topic' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Get Azure credentials
     const speechKey = process.env.AZURE_SPEECH_KEY;
@@ -202,18 +229,18 @@ export async function POST(request: NextRequest) {
 
     // Step 4: Save to database if user is authenticated and we have a topicId
     let submissionId: string | undefined;
-    if (user?.id && topicId) {
+    if (authResult.authenticated && topicId) {
       // Get attempt number (count previous submissions for this topic)
       const previousAttempts = await prisma.submission.count({
         where: {
           topicId,
-          accountId: user.id,
+          accountId: authResult.user.id,
         },
       });
 
       // Get default speaker for this user
       const speaker = await prisma.speaker.findFirst({
-        where: { accountId: user.id },
+        where: { accountId: authResult.user.id },
         orderBy: { createdAt: 'asc' },
       });
 
@@ -221,7 +248,7 @@ export async function POST(request: NextRequest) {
       const submission = await prisma.submission.create({
         data: {
           topicId,
-          accountId: user.id,
+          accountId: authResult.user.id,
           speakerId: speaker?.id,
           attemptNumber: previousAttempts + 1,
           inputMethod: 'voice',
