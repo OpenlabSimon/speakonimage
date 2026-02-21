@@ -27,7 +27,7 @@ export function VoiceRecorder({
     duration,
     audioBlob,
     audioUrl,
-    error,
+    error: recorderError,
     startRecording,
     stopRecording,
     resetRecording,
@@ -36,6 +36,8 @@ export function VoiceRecorder({
 
   const [processing, setProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [transcription, setTranscription] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Format duration as MM:SS
@@ -53,7 +55,10 @@ export function VoiceRecorder({
         await handleSubmitVoice(blob);
       }
     } else {
+      // Reset state for new recording
       resetRecording();
+      setApiError(null);
+      setTranscription(null);
       await startRecording();
     }
   };
@@ -61,6 +66,7 @@ export function VoiceRecorder({
   // Submit voice for transcription + evaluation in one step
   const handleSubmitVoice = async (blob: Blob) => {
     setProcessing(true);
+    setApiError(null);
     setProcessingStep('Uploading audio...');
 
     try {
@@ -68,7 +74,7 @@ export function VoiceRecorder({
       formData.append('audio', blob);
       formData.append('topicData', JSON.stringify(topicData));
 
-      setProcessingStep('Transcribing with Azure...');
+      setProcessingStep('Transcribing & evaluating...');
 
       const response = await fetch('/api/submissions/voice', {
         method: 'POST',
@@ -76,14 +82,19 @@ export function VoiceRecorder({
       });
 
       const result = await response.json();
+      console.log('Voice API response:', result);
 
       if (result.success) {
         if (result.data.status === 'no_match') {
+          setApiError('No speech detected. Please try again.');
           onError?.('No speech detected. Please try again.');
           return;
         }
 
-        // Return both transcription and evaluation
+        // Show transcription locally
+        setTranscription(result.data.transcription);
+
+        // Return both transcription and evaluation to parent
         onTranscriptionAndEvaluation({
           transcription: result.data.transcription,
           audioUrl: result.data.audioUrl,
@@ -91,11 +102,15 @@ export function VoiceRecorder({
           overallScore: result.data.overallScore,
         });
       } else {
-        onError?.(result.error || 'Voice submission failed');
+        const errorMsg = result.error || 'Voice submission failed';
+        setApiError(errorMsg);
+        onError?.(errorMsg);
       }
     } catch (err) {
       console.error('Voice submission error:', err);
-      onError?.('Failed to process voice recording');
+      const errorMsg = 'Failed to process voice recording';
+      setApiError(errorMsg);
+      onError?.(errorMsg);
     } finally {
       setProcessing(false);
       setProcessingStep('');
@@ -105,6 +120,8 @@ export function VoiceRecorder({
   // Handle re-record
   const handleReRecord = () => {
     resetRecording();
+    setApiError(null);
+    setTranscription(null);
   };
 
   if (!isSupported) {
@@ -114,6 +131,8 @@ export function VoiceRecorder({
       </div>
     );
   }
+
+  const error = apiError || recorderError;
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,13 +177,28 @@ export function VoiceRecorder({
             {processingStep || 'Processing...'}
           </span>
         )}
-        {state === 'idle' && !audioBlob && !processing && 'Click the microphone to start recording'}
+        {state === 'idle' && !audioBlob && !processing && !transcription && 'Click the microphone to start recording'}
       </div>
 
-      {/* Audio Playback (only show after successful recording, before processing) */}
-      {audioUrl && !isRecording && !processing && (
+      {/* Audio Playback */}
+      {audioUrl && !isRecording && (
         <div className="flex flex-col items-center gap-3">
           <audio ref={audioRef} src={audioUrl} controls className="h-10 w-full max-w-md" />
+        </div>
+      )}
+
+      {/* Transcription Result */}
+      {transcription && !processing && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <div className="text-sm font-medium text-green-700 mb-1">Transcription:</div>
+          <div className="text-gray-800">{transcription}</div>
+          <div className="text-xs text-green-600 mt-2">Evaluation loading...</div>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      {audioBlob && !isRecording && !processing && (
+        <div className="flex justify-center">
           <button
             onClick={handleReRecord}
             className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
