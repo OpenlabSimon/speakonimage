@@ -29,6 +29,7 @@ interface EvaluationData {
   evaluation: TranslationEvaluationScores | ExpressionEvaluationScores;
   overallScore: number;
   inputMethod: string;
+  audioUrl?: string;
 }
 
 interface AttemptData {
@@ -36,6 +37,7 @@ interface AttemptData {
   text: string;
   overallScore: number;
   timestamp: string;
+  audioUrl?: string;
   evaluation: EvaluationData;
 }
 
@@ -97,20 +99,44 @@ export default function TopicPracticePage() {
     }
   };
 
-  // Handle voice transcription
-  const handleVoiceTranscription = (text: string, _audioBlob: Blob) => {
-    setUserResponse(text);
+  // Handle voice transcription + evaluation (combined)
+  const handleVoiceResult = (result: {
+    transcription: string;
+    audioUrl?: string;
+    evaluation?: unknown;
+    overallScore?: number;
+  }) => {
+    setUserResponse(result.transcription);
+
+    if (result.evaluation && result.overallScore !== undefined) {
+      const evalData: EvaluationData = {
+        evaluation: result.evaluation as TranslationEvaluationScores | ExpressionEvaluationScores,
+        overallScore: result.overallScore,
+        inputMethod: 'voice',
+        audioUrl: result.audioUrl,
+      };
+
+      // Save this attempt
+      const newAttempt: AttemptData = {
+        attemptNumber: attempts.length + 1,
+        text: result.transcription,
+        overallScore: result.overallScore,
+        timestamp: new Date().toISOString(),
+        audioUrl: result.audioUrl,
+        evaluation: evalData,
+      };
+
+      const newAttempts = [...attempts, newAttempt];
+      saveAttempts(newAttempts);
+      setCurrentEvaluation(evalData);
+    }
   };
 
   // Handle text submission
-  const handleTextSubmit = (text: string) => {
+  const handleTextSubmit = async (text: string) => {
+    if (!topicData) return;
+
     setUserResponse(text);
-  };
-
-  // Submit for evaluation
-  const handleSubmitForEvaluation = async () => {
-    if (!userResponse || !topicData) return;
-
     setIsEvaluating(true);
     setError(null);
 
@@ -127,8 +153,8 @@ export default function TopicPracticePage() {
             suggestedVocab: topicData.suggestedVocab,
             grammarHints: topicData.grammarHints,
           },
-          userResponse,
-          inputMethod: inputMode,
+          userResponse: text,
+          inputMethod: 'text',
           historyAttempts: attempts.map(a => ({
             text: a.text,
             score: a.overallScore,
@@ -145,7 +171,7 @@ export default function TopicPracticePage() {
       // Save this attempt
       const newAttempt: AttemptData = {
         attemptNumber: attempts.length + 1,
-        text: userResponse,
+        text,
         overallScore: result.data.overallScore,
         timestamp: new Date().toISOString(),
         evaluation: result.data,
@@ -174,6 +200,12 @@ export default function TopicPracticePage() {
     sessionStorage.removeItem('currentTopic');
     sessionStorage.removeItem('topicAttempts');
     router.push('/');
+  };
+
+  // Play stored recording
+  const playRecording = (audioUrl: string) => {
+    const audio = new Audio(audioUrl);
+    audio.play();
   };
 
   const topicContent = getTopicContent();
@@ -207,6 +239,19 @@ export default function TopicPracticePage() {
             </div>
           </div>
 
+          {/* Play Recording Button */}
+          {currentEvaluation.audioUrl && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-xl flex items-center justify-between">
+              <span className="text-sm text-blue-700">Your recording is saved</span>
+              <button
+                onClick={() => playRecording(currentEvaluation.audioUrl!)}
+                className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
+              >
+                🔊 Play Recording
+              </button>
+            </div>
+          )}
+
           {/* Evaluation */}
           <EvaluationResult
             evaluation={currentEvaluation.evaluation}
@@ -222,6 +267,40 @@ export default function TopicPracticePage() {
             onRetry={handleRetry}
             onNext={handleNext}
           />
+
+          {/* Previous Recordings */}
+          {attempts.filter(a => a.audioUrl).length > 1 && (
+            <div className="mt-6 bg-white rounded-xl p-4 shadow">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">Previous Recordings</h3>
+              <div className="space-y-2">
+                {attempts.filter(a => a.audioUrl).map((attempt) => (
+                  <div
+                    key={attempt.attemptNumber}
+                    className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                      {attempt.attemptNumber}
+                    </div>
+                    <div className="flex-1 text-sm text-gray-600 truncate">
+                      {attempt.text.substring(0, 30)}...
+                    </div>
+                    <div className={`font-medium mr-2 ${
+                      attempt.overallScore >= 80 ? 'text-green-600' :
+                      attempt.overallScore >= 60 ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {attempt.overallScore}
+                    </div>
+                    <button
+                      onClick={() => playRecording(attempt.audioUrl!)}
+                      className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
+                    >
+                      🔊 Play
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -262,6 +341,13 @@ export default function TopicPracticePage() {
           </div>
         )}
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+            {error}
+          </div>
+        )}
+
         {/* Input Section */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
@@ -273,94 +359,59 @@ export default function TopicPracticePage() {
             )}
           </h2>
 
-          {/* Show transcription if we have one */}
-          {userResponse ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                <div className="text-sm text-green-700 font-medium mb-2">Your answer:</div>
-                <div className="text-gray-800">{userResponse}</div>
-              </div>
+          {/* Input Mode Toggle */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setInputMode('voice')}
+              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                inputMode === 'voice'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              🎤 Voice
+            </button>
+            <button
+              onClick={() => setInputMode('text')}
+              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                inputMode === 'text'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              ⌨️ Text
+            </button>
+          </div>
 
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-                  {error}
+          {/* Voice Input - auto evaluates */}
+          {inputMode === 'voice' && (
+            <VoiceRecorder
+              onTranscriptionAndEvaluation={handleVoiceResult}
+              topicData={topicData}
+              onError={(error) => setError(error)}
+            />
+          )}
+
+          {/* Text Input */}
+          {inputMode === 'text' && (
+            <div className="space-y-4">
+              <TextInput
+                onSubmit={handleTextSubmit}
+                placeholder="Type your English response here..."
+                disabled={isEvaluating}
+              />
+              {isEvaluating && (
+                <div className="text-center text-sm text-gray-600">
+                  <span className="animate-spin inline-block mr-2">⏳</span>
+                  Evaluating your response...
                 </div>
               )}
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleRetry}
-                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-                >
-                  Re-enter
-                </button>
-                <button
-                  onClick={handleSubmitForEvaluation}
-                  disabled={isEvaluating}
-                  className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                    isEvaluating
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-500 text-white hover:bg-green-600'
-                  }`}
-                >
-                  {isEvaluating ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">⏳</span>
-                      Evaluating...
-                    </span>
-                  ) : (
-                    'Get Evaluation'
-                  )}
-                </button>
-              </div>
             </div>
-          ) : (
-            <>
-              {/* Input Mode Toggle */}
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setInputMode('voice')}
-                  className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                    inputMode === 'voice'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  🎤 Voice
-                </button>
-                <button
-                  onClick={() => setInputMode('text')}
-                  className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                    inputMode === 'text'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  ⌨️ Text
-                </button>
-              </div>
-
-              {/* Voice Input */}
-              {inputMode === 'voice' && (
-                <VoiceRecorder
-                  onTranscription={handleVoiceTranscription}
-                  onError={(error) => setError(error)}
-                />
-              )}
-
-              {/* Text Input */}
-              {inputMode === 'text' && (
-                <TextInput
-                  onSubmit={handleTextSubmit}
-                  placeholder="Type your English response here..."
-                />
-              )}
-            </>
           )}
         </div>
 
         {/* Previous Attempts Summary */}
-        {attempts.length > 0 && !userResponse && (
+        {attempts.length > 0 && (
           <div className="mt-6 bg-white rounded-xl p-4 shadow">
             <h3 className="text-sm font-medium text-gray-700 mb-3">Previous Attempts</h3>
             <div className="space-y-2">
@@ -373,7 +424,7 @@ export default function TopicPracticePage() {
                     {attempt.attemptNumber}
                   </div>
                   <div className="flex-1 text-sm text-gray-600 truncate">
-                    {attempt.text.substring(0, 40)}...
+                    {attempt.text.substring(0, 30)}...
                   </div>
                   <div className={`font-medium ${
                     attempt.overallScore >= 80 ? 'text-green-600' :
@@ -381,6 +432,14 @@ export default function TopicPracticePage() {
                   }`}>
                     {attempt.overallScore}
                   </div>
+                  {attempt.audioUrl && (
+                    <button
+                      onClick={() => playRecording(attempt.audioUrl!)}
+                      className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
+                    >
+                      🔊
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

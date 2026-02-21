@@ -4,17 +4,22 @@ import { useState, useRef } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
 
 interface VoiceRecorderProps {
-  onTranscription: (text: string, audioBlob: Blob) => void;
+  onTranscriptionAndEvaluation: (result: {
+    transcription: string;
+    audioUrl?: string;
+    evaluation?: unknown;
+    overallScore?: number;
+  }) => void;
+  topicData: unknown;
   onError?: (error: string) => void;
   disabled?: boolean;
-  allowEdit?: boolean;
 }
 
 export function VoiceRecorder({
-  onTranscription,
+  onTranscriptionAndEvaluation,
+  topicData,
   onError,
   disabled,
-  allowEdit = true,
 }: VoiceRecorderProps) {
   const {
     state,
@@ -29,10 +34,8 @@ export function VoiceRecorder({
     isSupported,
   } = useRecorder();
 
-  const [transcribing, setTranscribing] = useState(false);
-  const [transcription, setTranscription] = useState<string | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedText, setEditedText] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState<string>('');
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Format duration as MM:SS
@@ -47,78 +50,61 @@ export function VoiceRecorder({
     if (isRecording) {
       const blob = await stopRecording();
       if (blob) {
-        await handleTranscribe(blob);
+        await handleSubmitVoice(blob);
       }
     } else {
-      setTranscription(null);
-      setIsEditing(false);
-      setEditedText('');
+      resetRecording();
       await startRecording();
     }
   };
 
-  // Handle transcription
-  const handleTranscribe = async (blob: Blob) => {
-    setTranscribing(true);
+  // Submit voice for transcription + evaluation in one step
+  const handleSubmitVoice = async (blob: Blob) => {
+    setProcessing(true);
+    setProcessingStep('Uploading audio...');
+
     try {
       const formData = new FormData();
       formData.append('audio', blob);
+      formData.append('topicData', JSON.stringify(topicData));
 
-      const response = await fetch('/api/speech/transcribe', {
+      setProcessingStep('Transcribing with Azure...');
+
+      const response = await fetch('/api/submissions/voice', {
         method: 'POST',
         body: formData,
       });
 
       const result = await response.json();
 
-      if (result.success && result.data.text) {
-        setTranscription(result.data.text);
-        setEditedText(result.data.text);
-      } else if (result.data?.status === 'no_match') {
-        setTranscription('');
-        onError?.('No speech detected. Please try again.');
+      if (result.success) {
+        if (result.data.status === 'no_match') {
+          onError?.('No speech detected. Please try again.');
+          return;
+        }
+
+        // Return both transcription and evaluation
+        onTranscriptionAndEvaluation({
+          transcription: result.data.transcription,
+          audioUrl: result.data.audioUrl,
+          evaluation: result.data.evaluation,
+          overallScore: result.data.overallScore,
+        });
       } else {
-        setTranscription(null);
-        onError?.(result.error || 'Transcription failed');
+        onError?.(result.error || 'Voice submission failed');
       }
     } catch (err) {
-      console.error('Transcription error:', err);
-      onError?.('Failed to transcribe audio');
+      console.error('Voice submission error:', err);
+      onError?.('Failed to process voice recording');
     } finally {
-      setTranscribing(false);
-    }
-  };
-
-  // Handle edit mode
-  const handleStartEdit = () => {
-    setIsEditing(true);
-    setEditedText(transcription || '');
-  };
-
-  const handleSaveEdit = () => {
-    setTranscription(editedText);
-    setIsEditing(false);
-  };
-
-  const handleCancelEdit = () => {
-    setEditedText(transcription || '');
-    setIsEditing(false);
-  };
-
-  // Handle submit
-  const handleSubmit = () => {
-    const finalText = transcription || '';
-    if (finalText && audioBlob) {
-      onTranscription(finalText, audioBlob);
+      setProcessing(false);
+      setProcessingStep('');
     }
   };
 
   // Handle re-record
   const handleReRecord = () => {
     resetRecording();
-    setTranscription(null);
-    setIsEditing(false);
-    setEditedText('');
   };
 
   if (!isSupported) {
@@ -135,7 +121,7 @@ export function VoiceRecorder({
       <div className="flex items-center justify-center gap-4">
         <button
           onClick={handleToggleRecording}
-          disabled={disabled || transcribing}
+          disabled={disabled || processing}
           className={`
             w-20 h-20 rounded-full flex items-center justify-center
             transition-all duration-200 text-white font-medium shadow-lg
@@ -143,11 +129,13 @@ export function VoiceRecorder({
               ? 'bg-red-500 hover:bg-red-600 animate-pulse'
               : 'bg-blue-500 hover:bg-blue-600'
             }
-            ${(disabled || transcribing) ? 'opacity-50 cursor-not-allowed' : ''}
+            ${(disabled || processing) ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         >
           {isRecording ? (
             <span className="text-3xl">⏹</span>
+          ) : processing ? (
+            <span className="text-2xl animate-spin">⏳</span>
           ) : (
             <span className="text-3xl">🎤</span>
           )}
@@ -162,89 +150,27 @@ export function VoiceRecorder({
 
       {/* Status Text */}
       <div className="text-center text-sm text-gray-600">
-        {isRecording && 'Recording... Click to stop'}
-        {state === 'processing' && 'Processing audio...'}
-        {transcribing && 'Transcribing with Azure...'}
-        {state === 'idle' && !audioBlob && !transcribing && 'Click the microphone to start'}
+        {isRecording && 'Recording... Click to stop and evaluate'}
+        {state === 'processing' && !processing && 'Processing audio...'}
+        {processing && (
+          <span className="flex items-center justify-center gap-2">
+            <span className="animate-spin">⏳</span>
+            {processingStep || 'Processing...'}
+          </span>
+        )}
+        {state === 'idle' && !audioBlob && !processing && 'Click the microphone to start recording'}
       </div>
 
-      {/* Audio Playback */}
-      {audioUrl && !isRecording && (
-        <div className="flex items-center justify-center">
+      {/* Audio Playback (only show after successful recording, before processing) */}
+      {audioUrl && !isRecording && !processing && (
+        <div className="flex flex-col items-center gap-3">
           <audio ref={audioRef} src={audioUrl} controls className="h-10 w-full max-w-md" />
-        </div>
-      )}
-
-      {/* Transcription Result */}
-      {transcription !== null && !isRecording && (
-        <div className="bg-gray-50 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Transcription:</span>
-            {allowEdit && !isEditing && transcription && (
-              <button
-                onClick={handleStartEdit}
-                className="text-sm text-blue-500 hover:text-blue-600"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-
-          {isEditing ? (
-            <div className="space-y-2">
-              <textarea
-                value={editedText}
-                onChange={(e) => setEditedText(e.target.value)}
-                className="w-full h-24 px-3 py-2 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Edit your transcription..."
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-gray-800">
-              {transcription || (
-                <span className="text-gray-400 italic">No speech detected</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      {audioBlob && !isRecording && !transcribing && transcription !== null && (
-        <div className="flex justify-center gap-3">
           <button
             onClick={handleReRecord}
             className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
           >
-            Re-record
+            Record Again
           </button>
-          {transcription && (
-            <button
-              onClick={handleSubmit}
-              disabled={isEditing}
-              className={`px-6 py-2 text-sm rounded-lg transition-colors ${
-                isEditing
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-              }`}
-            >
-              Use This
-            </button>
-          )}
         </div>
       )}
 

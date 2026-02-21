@@ -3,14 +3,39 @@
 import { useState } from 'react';
 import { VoiceRecorder } from '@/components/input/VoiceRecorder';
 
+// Mock topic data for testing
+const mockTopicData = {
+  type: 'translation' as const,
+  chinesePrompt: '这是一个测试',
+  keyPoints: ['test point'],
+  suggestedVocab: [],
+  difficultyMetadata: {
+    targetCefr: 'B1',
+    vocabComplexity: 0.5,
+    grammarComplexity: 0.5,
+  },
+};
+
 export default function TestVoicePage() {
-  const [transcribedText, setTranscribedText] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    transcription: string;
+    audioUrl?: string;
+    overallScore?: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleTranscription = (text: string, audioBlob: Blob) => {
-    setTranscribedText(text);
-    console.log('Received transcription:', text);
-    console.log('Audio blob size:', audioBlob.size);
+  const handleResult = (data: {
+    transcription: string;
+    audioUrl?: string;
+    evaluation?: unknown;
+    overallScore?: number;
+  }) => {
+    setResult({
+      transcription: data.transcription,
+      audioUrl: data.audioUrl,
+      overallScore: data.overallScore,
+    });
+    console.log('Received result:', data);
   };
 
   const handleError = (err: string) => {
@@ -25,15 +50,25 @@ export default function TestVoicePage() {
 
         <div className="bg-white rounded-xl shadow-lg p-6">
           <VoiceRecorder
-            onTranscription={handleTranscription}
+            onTranscriptionAndEvaluation={handleResult}
+            topicData={mockTopicData}
             onError={handleError}
           />
         </div>
 
-        {transcribedText && (
+        {result && (
           <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
-            <h2 className="text-sm font-medium text-green-800 mb-2">Submitted Transcription:</h2>
-            <p className="text-green-900">{transcribedText}</p>
+            <h2 className="text-sm font-medium text-green-800 mb-2">Result:</h2>
+            <p className="text-green-900 mb-2"><strong>Transcription:</strong> {result.transcription}</p>
+            {result.overallScore !== undefined && (
+              <p className="text-green-900 mb-2"><strong>Score:</strong> {result.overallScore}</p>
+            )}
+            {result.audioUrl && (
+              <div className="mt-2">
+                <strong className="text-green-800">Recording:</strong>
+                <audio src={result.audioUrl} controls className="mt-1 w-full" />
+              </div>
+            )}
           </div>
         )}
 
@@ -50,9 +85,8 @@ export default function TestVoicePage() {
             <li>Click the microphone button to start recording</li>
             <li>Speak clearly in English</li>
             <li>Click the stop button to end recording</li>
-            <li>Wait for transcription to complete</li>
-            <li>Review the transcription result</li>
-            <li>Click Submit to confirm, or Re-record to try again</li>
+            <li>Recording will be transcribed and evaluated automatically</li>
+            <li>Audio is stored and can be played back</li>
           </ol>
         </div>
       </div>
