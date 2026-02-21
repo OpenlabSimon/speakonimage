@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
+import { convertToWav } from '@/lib/audio/convert';
 
 interface VoiceRecorderProps {
   onTranscriptionAndEvaluation: (result: {
@@ -67,11 +68,23 @@ export function VoiceRecorder({
   const handleSubmitVoice = async (blob: Blob) => {
     setProcessing(true);
     setApiError(null);
-    setProcessingStep('Uploading audio...');
+    setProcessingStep('Converting audio...');
 
     try {
+      // Convert webm/opus to WAV for Azure compatibility
+      let audioToSend: Blob;
+      try {
+        audioToSend = await convertToWav(blob);
+        console.log('Converted to WAV:', audioToSend.size, 'bytes');
+      } catch (conversionError) {
+        console.warn('WAV conversion failed, using original:', conversionError);
+        audioToSend = blob;
+      }
+
+      setProcessingStep('Uploading audio...');
+
       const formData = new FormData();
-      formData.append('audio', blob);
+      formData.append('audio', audioToSend);
       formData.append('topicData', JSON.stringify(topicData));
 
       setProcessingStep('Transcribing & evaluating...');
