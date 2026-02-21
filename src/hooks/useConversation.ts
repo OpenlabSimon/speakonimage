@@ -57,6 +57,7 @@ interface SessionExtractionResult {
 interface UseConversationOptions {
   topicId?: string;
   autoStart?: boolean;  // Automatically create session on mount
+  isAuthenticated?: boolean;  // When false, all API calls become no-ops
 }
 
 interface UseConversationReturn {
@@ -92,6 +93,8 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
    * Create a new session
    */
   const startSession = useCallback(async (topicId?: string): Promise<ChatSession | null> => {
+    if (options.isAuthenticated === false) return null;
+
     setIsLoading(true);
     setError(null);
 
@@ -129,6 +132,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
    * End the current session
    */
   const endSession = useCallback(async (): Promise<void> => {
+    if (options.isAuthenticated === false) return;
     if (!sessionRef.current) return;
 
     setIsLoading(true);
@@ -162,6 +166,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     content: string,
     metadata?: MessageMetadata
   ): Promise<ChatMessage | null> => {
+    if (options.isAuthenticated === false) return null;
     if (!sessionRef.current) {
       setError('No active session');
       return null;
@@ -228,6 +233,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
    * Refresh messages from the server
    */
   const refreshMessages = useCallback(async (): Promise<void> => {
+    if (options.isAuthenticated === false) return;
     if (!sessionRef.current) return;
 
     setIsLoading(true);
@@ -261,10 +267,11 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
    * Auto-start session if configured
    */
   useEffect(() => {
+    if (options.isAuthenticated === false) return;
     if (options.autoStart && options.topicId && !session) {
       startSession(options.topicId);
     }
-  }, [options.autoStart, options.topicId, session, startSession]);
+  }, [options.autoStart, options.topicId, options.isAuthenticated, session, startSession]);
 
   return {
     session,

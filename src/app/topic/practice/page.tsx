@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ChinesePromptCard } from '@/components/topic/ChinesePromptCard';
 import { VocabPanel } from '@/components/topic/VocabPanel';
 import { GrammarPanel } from '@/components/topic/GrammarCard';
@@ -10,6 +11,7 @@ import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
 import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
 import { useLevelHistory, levelToScore, type JumpDetection } from '@/hooks/useLevelHistory';
+import { useConversation } from '@/hooks/useConversation';
 import type {
   TopicContent,
   VocabularyItem,
@@ -53,6 +55,8 @@ interface AttemptData {
 
 export default function TopicPracticePage() {
   const router = useRouter();
+  const { data: authSession } = useSession();
+  const isAuthenticated = !!authSession?.user;
   const { addScore, setLevel, getCurrentLevel } = useLevelHistory();
 
   const [topicData, setTopicData] = useState<TopicData | null>(null);
@@ -67,6 +71,13 @@ export default function TopicPracticePage() {
   // Level change modal state
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [pendingJump, setPendingJump] = useState<JumpDetection | null>(null);
+
+  // Conversation session for memory system
+  const conversation = useConversation({
+    topicId: topicData?.id,
+    autoStart: true,
+    isAuthenticated,
+  });
 
   // Load topic data from sessionStorage
   useEffect(() => {
@@ -212,6 +223,7 @@ export default function TopicPracticePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           topicId: topicData.id, // Pass topic ID for database persistence
+          sessionId: conversation.session?.id, // Pass session ID for memory system
           topicType: topicData.type,
           topicContent: {
             chinesePrompt: topicData.chinesePrompt,
@@ -266,8 +278,9 @@ export default function TopicPracticePage() {
     setError(null);
   };
 
-  // Handle next topic - clear everything and go to home
-  const handleNext = () => {
+  // Handle next topic - end session, clear everything and go to home
+  const handleNext = async () => {
+    await conversation.endSession();
     sessionStorage.removeItem('currentTopic');
     sessionStorage.removeItem('topicAttempts');
     router.push('/');
@@ -498,6 +511,7 @@ export default function TopicPracticePage() {
               onTranscriptionAndEvaluation={handleVoiceResult}
               topicData={topicData}
               topicId={topicData.id}
+              sessionId={conversation.session?.id}
               onError={(error) => setError(error)}
             />
           )}

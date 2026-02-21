@@ -79,7 +79,8 @@ export function buildTranslationEvaluationPrompt(
   keyPoints: string[],
   userResponse: string,
   suggestedVocab: string[],
-  historyAttempts?: { text: string; score: number }[]
+  historyAttempts?: { text: string; score: number }[],
+  profileContext?: string
 ): string {
   let prompt = `评估以下中译英翻译：
 
@@ -100,6 +101,13 @@ ${suggestedVocab.join(', ')}
     prompt += `
 ## 历史尝试
 ${historyAttempts.map((h, i) => `尝试 ${i + 1}: "${h.text}" (得分: ${h.score})`).join('\n')}
+`;
+  }
+
+  if (profileContext) {
+    prompt += `
+## 学生背景（个性化反馈参考）
+${profileContext}
 `;
   }
 

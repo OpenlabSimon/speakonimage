@@ -13,6 +13,7 @@ interface VoiceRecorderProps {
   }) => void;
   topicData: unknown;
   topicId?: string; // Database topic ID for persistence
+  sessionId?: string; // Chat session ID for memory system
   onError?: (error: string) => void;
   disabled?: boolean;
 }
@@ -21,6 +22,7 @@ export function VoiceRecorder({
   onTranscriptionAndEvaluation,
   topicData,
   topicId,
+  sessionId,
   onError,
   disabled,
 }: VoiceRecorderProps) {
@@ -92,6 +94,9 @@ export function VoiceRecorder({
       formData.append('topicData', JSON.stringify(topicData));
       if (topicId) {
         formData.append('topicId', topicId);
+      }
+      if (sessionId) {
+        formData.append('sessionId', sessionId);
       }
 
       setProcessingStep('Transcribing & evaluating...');

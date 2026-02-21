@@ -14,6 +14,11 @@ import {
   EXPRESSION_EVALUATION_SYSTEM_PROMPT,
   buildExpressionEvaluationPrompt,
 } from '@/lib/llm/prompts/evaluate-expression';
+import {
+  getOrCreateSessionForTopic,
+  addMessage,
+} from '@/lib/memory/ConversationManager';
+import { buildProfileContext } from '@/lib/profile/ProfileInjector';
 import type { ApiResponse } from '@/types';
 
 /**
@@ -52,8 +57,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get topicId from form data (optional)
+    // Get topicId and sessionId from form data (optional)
     const topicId = formData.get('topicId') as string | null;
+    const sessionId = formData.get('sessionId') as string | null;
 
     // Check authentication
     const authResult = await checkAuth();
@@ -177,6 +183,19 @@ export async function POST(request: NextRequest) {
     const llm = getLLMProvider();
     const vocabWords = topicData.suggestedVocab?.map((v: { word: string }) => v.word) || [];
 
+    // Build profile context for personalized feedback
+    let profileContext: string | null = null;
+    if (authResult.authenticated) {
+      const speaker = await prisma.speaker.findFirst({
+        where: { accountId: authResult.user.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (speaker) {
+        profileContext = await buildProfileContext(speaker.id);
+      }
+    }
+
     let evaluation;
 
     if (topicData.type === 'translation') {
@@ -184,7 +203,9 @@ export async function POST(request: NextRequest) {
         topicData.chinesePrompt,
         topicData.keyPoints || [],
         transcribedText,
-        vocabWords
+        vocabWords,
+        undefined, // historyAttempts
+        profileContext || undefined
       );
 
       evaluation = await llm.generateJSON(
@@ -199,7 +220,9 @@ export async function POST(request: NextRequest) {
         topicData.guidingQuestions || [],
         transcribedText,
         vocabWords,
-        grammarPoints
+        grammarPoints,
+        undefined, // historyAttempts
+        profileContext || undefined
       );
 
       evaluation = await llm.generateJSON(
@@ -307,6 +330,55 @@ export async function POST(request: NextRequest) {
           where: { id: speaker.id },
           data: { lastActiveAt: new Date() },
         });
+      }
+
+      // Add messages to chat session for memory system
+      let activeSessionId: string | undefined = sessionId || undefined;
+
+      if (!activeSessionId && topicId) {
+        try {
+          const session = await getOrCreateSessionForTopic(
+            authResult.user.id,
+            topicId,
+            speaker?.id
+          );
+          activeSessionId = session.id;
+        } catch (err) {
+          console.error('Failed to create session:', err);
+        }
+      }
+
+      if (activeSessionId) {
+        try {
+          await addMessage({
+            sessionId: activeSessionId,
+            role: 'user',
+            content: transcribedText,
+            contentType: 'text',
+            metadata: {
+              inputMethod: 'voice',
+              audioUrl,
+            },
+          });
+
+          const evaluationSummary = evaluation.type === 'translation'
+            ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
+            : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
+
+          await addMessage({
+            sessionId: activeSessionId,
+            role: 'assistant',
+            content: evaluationSummary,
+            contentType: 'evaluation',
+            metadata: {
+              overallScore,
+              estimatedCefr: evaluation.overallCefrEstimate,
+              evaluationType: topicData.type,
+            },
+          });
+        } catch (err) {
+          console.error('Failed to add messages to session:', err);
+        }
       }
     }
 

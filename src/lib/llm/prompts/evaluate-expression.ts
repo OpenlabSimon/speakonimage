@@ -69,7 +69,8 @@ export function buildExpressionEvaluationPrompt(
   userResponse: string,
   suggestedVocab: string[],
   grammarHints: string[],
-  historyAttempts?: { text: string; score: number }[]
+  historyAttempts?: { text: string; score: number }[],
+  profileContext?: string
 ): string {
   let prompt = `评估以下话题表达：
 
@@ -93,6 +94,13 @@ ${grammarHints.join(', ')}
     prompt += `
 ## 历史尝试
 ${historyAttempts.map((h, i) => `尝试 ${i + 1}: "${h.text}" (得分: ${h.score})`).join('\n')}
+`;
+  }
+
+  if (profileContext) {
+    prompt += `
+## 学生背景（个性化反馈参考）
+${profileContext}
 `;
   }
 

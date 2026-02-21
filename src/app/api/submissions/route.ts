@@ -17,6 +17,7 @@ import {
   getOrCreateSessionForTopic,
   addMessage,
 } from '@/lib/memory/ConversationManager';
+import { buildProfileContext } from '@/lib/profile/ProfileInjector';
 import type { ApiResponse } from '@/types';
 
 // Request body schema
@@ -100,6 +101,19 @@ export async function POST(request: NextRequest) {
     // Extract vocab words for prompt
     const vocabWords = topicContent.suggestedVocab.map(v => v.word);
 
+    // Build profile context for personalized feedback
+    let profileContext: string | null = null;
+    if (authResult.authenticated) {
+      const speaker = await prisma.speaker.findFirst({
+        where: { accountId: authResult.user.id },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (speaker) {
+        profileContext = await buildProfileContext(speaker.id);
+      }
+    }
+
     let evaluation;
 
     if (topicType === 'translation') {
@@ -109,7 +123,8 @@ export async function POST(request: NextRequest) {
         topicContent.keyPoints || [],
         userResponse,
         vocabWords,
-        historyAttempts
+        historyAttempts,
+        profileContext || undefined
       );
 
       evaluation = await llm.generateJSON(
@@ -126,7 +141,8 @@ export async function POST(request: NextRequest) {
         userResponse,
         vocabWords,
         grammarPoints,
-        historyAttempts
+        historyAttempts,
+        profileContext || undefined
       );
 
       evaluation = await llm.generateJSON(
