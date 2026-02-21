@@ -141,12 +141,8 @@ BLOB_READ_WRITE_TOKEN=...              # Vercel Blob (可选)
 - **ChatSession** — 对话会话记录（accountId, speakerId, topicId, status, contextSummary, extractedData）
 - **ChatMessage** — 单条消息记录（sessionId, role, content, contentType, metadata）
 
-### ⚠️ 待执行迁移
-代码已就绪，但数据库迁移尚未运行（Neon数据库连接暂时不可达）。当数据库可用时执行：
-```bash
-npx prisma migrate dev --name add_chat_memory
-```
-手动SQL备份：`prisma/migrations/manual/add_chat_memory.sql`
+### 迁移状态：已完成
+迁移文件：`prisma/migrations/20260221142935_add_chat_memory/migration.sql`
 
 ### 新增文件
 | 文件 | 用途 |
