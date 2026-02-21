@@ -9,26 +9,32 @@ interface VocabCardProps {
 }
 
 export function VocabCard({ vocab, compact = false }: VocabCardProps) {
-  const { speak, isSpeaking } = useTTS();
+  const { speak, isSpeaking, isLoading } = useTTS({ provider: 'azure' });
 
   const handleSpeak = () => {
     speak(vocab.word);
   };
 
+  const isActive = isSpeaking || isLoading;
+
   if (compact) {
     return (
       <button
         onClick={handleSpeak}
+        disabled={isActive}
         className={`
           inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
           bg-blue-50 hover:bg-blue-100 border border-blue-200
           transition-colors text-sm
-          ${isSpeaking ? 'ring-2 ring-blue-400' : ''}
+          ${isActive ? 'ring-2 ring-blue-400' : ''}
+          ${isLoading ? 'opacity-70' : ''}
         `}
       >
         <span className="font-medium text-blue-800">{vocab.word}</span>
         <span className="text-blue-600 text-xs">{vocab.chinese}</span>
-        <span className="text-blue-400">🔊</span>
+        <span className={`text-blue-400 ${isLoading ? 'animate-pulse' : ''}`}>
+          {isLoading ? '...' : '🔊'}
+        </span>
       </button>
     );
   }
@@ -48,15 +54,17 @@ export function VocabCard({ vocab, compact = false }: VocabCardProps) {
         </div>
         <button
           onClick={handleSpeak}
+          disabled={isActive}
           className={`
             w-10 h-10 rounded-full flex items-center justify-center
             bg-blue-50 hover:bg-blue-100 text-blue-600
             transition-colors
-            ${isSpeaking ? 'ring-2 ring-blue-400 animate-pulse' : ''}
+            ${isActive ? 'ring-2 ring-blue-400 animate-pulse' : ''}
+            ${isLoading ? 'opacity-70' : ''}
           `}
           title="Play pronunciation"
         >
-          🔊
+          {isLoading ? '...' : '🔊'}
         </button>
       </div>
 

@@ -10,11 +10,13 @@ interface GrammarCardProps {
 
 export function GrammarCard({ grammar }: GrammarCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const { speak, isSpeaking } = useTTS();
+  const { speak, isSpeaking, isLoading } = useTTS({ provider: 'azure' });
 
   const handleSpeakExample = () => {
     speak(grammar.example);
   };
+
+  const isActive = isSpeaking || isLoading;
 
   return (
     <div className="bg-white border border-amber-200 rounded-xl overflow-hidden">
@@ -56,15 +58,17 @@ export function GrammarCard({ grammar }: GrammarCardProps) {
               <div className="flex-1 text-gray-700 italic">{grammar.example}</div>
               <button
                 onClick={handleSpeakExample}
+                disabled={isActive}
                 className={`
                   w-8 h-8 rounded-full flex items-center justify-center
                   bg-amber-50 hover:bg-amber-100 text-amber-600
                   transition-colors flex-shrink-0
-                  ${isSpeaking ? 'ring-2 ring-amber-400 animate-pulse' : ''}
+                  ${isActive ? 'ring-2 ring-amber-400 animate-pulse' : ''}
+                  ${isLoading ? 'opacity-70' : ''}
                 `}
                 title="Play example"
               >
-                🔊
+                {isLoading ? '...' : '🔊'}
               </button>
             </div>
           </div>
