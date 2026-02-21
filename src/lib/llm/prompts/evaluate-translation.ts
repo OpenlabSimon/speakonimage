@@ -31,7 +31,12 @@ export const TranslationEvaluationSchema = z.object({
       original: z.string(),
       corrected: z.string(),
       rule: z.string(),
-      severity: z.enum(['low', 'medium', 'high']),
+      severity: z.string().transform(s => {
+        const lower = s.toLowerCase();
+        if (lower.includes('high') || lower.includes('major') || lower.includes('severe') || lower.includes('serious')) return 'high';
+        if (lower.includes('medium') || lower.includes('moderate') || lower.includes('mid')) return 'medium';
+        return 'low';
+      }),
     })),
   }),
   vocabulary: z.object({
