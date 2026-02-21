@@ -42,19 +42,30 @@ export async function transcribeAudio(
     // Azure supports: audio/wav, audio/ogg, audio/webm, audio/mp3, etc.
     let contentType = audioBlob.type || 'audio/webm';
 
+    console.log('Original audio type:', audioBlob.type, 'size:', audioBlob.size);
+
     // Map common types to Azure-accepted formats
+    // For webm with opus, we need to specify the full content type
     if (contentType.includes('webm')) {
-      contentType = 'audio/webm';
+      // Keep the codec info if present, Azure needs it for proper decoding
+      contentType = contentType.includes('opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
     } else if (contentType.includes('wav')) {
       contentType = 'audio/wav';
     } else if (contentType.includes('mp3') || contentType.includes('mpeg')) {
       contentType = 'audio/mp3';
     } else if (contentType.includes('ogg')) {
-      contentType = 'audio/ogg';
+      contentType = 'audio/ogg;codecs=opus';
     }
+
+    console.log('Using content type:', contentType);
 
     // Azure STT REST API endpoint
     const url = `https://${speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?language=${language}&format=detailed`;
+
+    console.log('Sending to Azure STT:', url);
+    console.log('Audio data size:', audioData.byteLength, 'bytes');
 
     const response = await fetch(url, {
       method: 'POST',
@@ -65,6 +76,8 @@ export async function transcribeAudio(
       },
       body: audioData,
     });
+
+    console.log('Azure STT response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();

@@ -45,11 +45,12 @@ export function useRecorder(): UseRecorderResult {
       chunksRef.current = [];
 
       // Request microphone access
+      // Don't constrain sampleRate - let browser use native rate for better compatibility
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 16000,
+          autoGainControl: true,
         },
       });
 
