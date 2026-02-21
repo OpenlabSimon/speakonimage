@@ -6,20 +6,31 @@
 /**
  * Convert audio blob to WAV format using Web Audio API
  * This runs in the browser
+ * Note: decodeAudioData may not support all formats (like webm/opus)
  */
 export async function convertToWav(audioBlob: Blob): Promise<Blob> {
-  const audioContext = new AudioContext();
+  // Check if AudioContext is available
+  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) {
+    throw new Error('AudioContext not supported');
+  }
 
-  // Decode the audio blob
-  const arrayBuffer = await audioBlob.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  const audioContext = new AudioContextClass();
 
-  // Convert to WAV
-  const wavBuffer = audioBufferToWav(audioBuffer);
+  try {
+    // Decode the audio blob
+    const arrayBuffer = await audioBlob.arrayBuffer();
 
-  await audioContext.close();
+    // decodeAudioData may fail with webm/opus format
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  return new Blob([wavBuffer], { type: 'audio/wav' });
+    // Convert to WAV
+    const wavBuffer = audioBufferToWav(audioBuffer);
+
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+  } finally {
+    await audioContext.close();
+  }
 }
 
 /**

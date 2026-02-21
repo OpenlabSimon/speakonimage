@@ -56,10 +56,17 @@ export function useRecorder(): UseRecorderResult {
 
       streamRef.current = stream;
 
-      // Create MediaRecorder with WAV-compatible format
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+      // Try different formats in order of Azure compatibility
+      // ogg/opus seems to work better with Azure than webm/opus
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        mimeType = 'audio/ogg;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm';
+      }
+      console.log('Recording with mimeType:', mimeType);
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;

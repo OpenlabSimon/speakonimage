@@ -71,14 +71,16 @@ export function VoiceRecorder({
     setProcessingStep('Converting audio...');
 
     try {
-      // Convert webm/opus to WAV for Azure compatibility
-      let audioToSend: Blob;
+      // Try to convert webm/opus to WAV for Azure compatibility
+      // If conversion fails, use original format
+      let audioToSend: Blob = blob;
       try {
-        audioToSend = await convertToWav(blob);
-        console.log('Converted to WAV:', audioToSend.size, 'bytes');
+        const wavBlob = await convertToWav(blob);
+        audioToSend = wavBlob;
+        console.log('Converted to WAV:', wavBlob.size, 'bytes');
       } catch (conversionError) {
-        console.warn('WAV conversion failed, using original:', conversionError);
-        audioToSend = blob;
+        console.warn('WAV conversion failed, using original webm:', conversionError);
+        // Continue with original blob
       }
 
       setProcessingStep('Uploading audio...');
@@ -121,7 +123,7 @@ export function VoiceRecorder({
       }
     } catch (err) {
       console.error('Voice submission error:', err);
-      const errorMsg = 'Failed to process voice recording';
+      const errorMsg = err instanceof Error ? err.message : 'Failed to process voice recording';
       setApiError(errorMsg);
       onError?.(errorMsg);
     } finally {
