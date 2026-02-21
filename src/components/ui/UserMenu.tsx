@@ -21,13 +21,13 @@ export function UserMenu() {
           href="/auth/login"
           className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
         >
-          Sign In
+          登录
         </Link>
         <Link
           href="/auth/register"
           className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
         >
-          Register
+          注册
         </Link>
       </div>
     );
@@ -60,7 +60,7 @@ export function UserMenu() {
                 {email}
               </div>
               <div className="text-xs text-gray-500">
-                Logged in
+                已登录
               </div>
             </div>
 
@@ -70,7 +70,7 @@ export function UserMenu() {
                 onClick={() => setIsOpen(false)}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                My Profile
+                我的档案
               </Link>
               <button
                 onClick={() => {
@@ -79,7 +79,7 @@ export function UserMenu() {
                 }}
                 className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
               >
-                Sign Out
+                退出
               </button>
             </div>
           </div>

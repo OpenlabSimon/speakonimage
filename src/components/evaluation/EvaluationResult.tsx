@@ -47,22 +47,22 @@ export function EvaluationResult({
 
   // Define tabs
   const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Score', icon: '📊' },
-    { id: 'feedback', label: 'Details', icon: '📝' },
-    { id: 'grammar', label: 'Grammar', icon: '✏️' },
-    { id: 'improve', label: 'Improve', icon: '💡' },
+    { id: 'overview', label: '分数', icon: '📊' },
+    { id: 'feedback', label: '详情', icon: '📝' },
+    { id: 'grammar', label: '语法', icon: '✏️' },
+    { id: 'improve', label: '改进', icon: '💡' },
   ];
 
   // Add history tab if there are multiple attempts
   if (attempts.length > 1) {
-    tabs.push({ id: 'history', label: 'History', icon: '📈' });
+    tabs.push({ id: 'history', label: '历史', icon: '📈' });
   }
 
   return (
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       {/* User Response Summary */}
       <div className="bg-gray-50 px-4 py-3 border-b">
-        <div className="text-xs text-gray-500 mb-1">Your response:</div>
+        <div className="text-xs text-gray-500 mb-1">你的回答:</div>
         <div className="text-gray-800 text-sm line-clamp-2">{userResponse}</div>
       </div>
 
@@ -117,14 +117,14 @@ export function EvaluationResult({
           className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
         >
           <span>🔄</span>
-          Try Again
+          再试一次
         </button>
         <button
           onClick={onNext}
           className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
         >
           <span>➡️</span>
-          Next Topic
+          下一个话题
         </button>
       </div>
     </div>

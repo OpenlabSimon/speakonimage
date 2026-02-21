@@ -25,8 +25,8 @@ export function Suggestions({ betterExpressions, suggestions }: SuggestionsProps
       {betterExpressions.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="bg-indigo-50 px-4 py-2 border-b border-indigo-100">
-            <h3 className="font-semibold text-indigo-800">Better Ways to Say It</h3>
-            <p className="text-xs text-indigo-600">Click to hear pronunciation</p>
+            <h3 className="font-semibold text-indigo-800">更好的表达方式</h3>
+            <p className="text-xs text-indigo-600">点击听发音</p>
           </div>
           <div className="p-4 space-y-2">
             {betterExpressions.map((expr, i) => (
@@ -41,7 +41,7 @@ export function Suggestions({ betterExpressions, suggestions }: SuggestionsProps
                   ${isActive ? 'opacity-70' : ''}
                 `}
               >
-                <span>"{expr}"</span>
+                <span>&quot;{expr}&quot;</span>
                 <span className={`text-indigo-400 ${isLoading ? 'animate-pulse' : ''}`}>
                   {isLoading ? '...' : '🔊'}
                 </span>
@@ -54,7 +54,7 @@ export function Suggestions({ betterExpressions, suggestions }: SuggestionsProps
       {/* Quick Tip */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-green-50 px-4 py-2 border-b border-green-100">
-          <h3 className="font-semibold text-green-800">Quick Tip</h3>
+          <h3 className="font-semibold text-green-800">即时建议</h3>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm">{suggestions.immediate}</p>
@@ -64,7 +64,7 @@ export function Suggestions({ betterExpressions, suggestions }: SuggestionsProps
       {/* Long-term Improvement */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
-          <h3 className="font-semibold text-purple-800">For Long-term Growth</h3>
+          <h3 className="font-semibold text-purple-800">长期成长建议</h3>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm">{suggestions.longTerm}</p>

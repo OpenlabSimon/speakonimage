@@ -244,7 +244,7 @@ export default function TopicPracticePage() {
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Evaluation failed');
+        throw new Error(result.error || '评估失败');
       }
 
       // Save this attempt
@@ -265,7 +265,7 @@ export default function TopicPracticePage() {
       updateLevelHistory(result.data.overallScore, estimatedLevel);
     } catch (err) {
       console.error('Evaluation error:', err);
-      setError(err instanceof Error ? err.message : 'Evaluation failed');
+      setError(err instanceof Error ? err.message : '评估失败');
     } finally {
       setIsEvaluating(false);
     }
@@ -299,7 +299,7 @@ export default function TopicPracticePage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">...</div>
-          <div className="text-gray-600">Loading topic...</div>
+          <div className="text-gray-600">加载话题中...</div>
         </div>
       </div>
     );
@@ -316,14 +316,14 @@ export default function TopicPracticePage() {
               onClick={() => router.push('/')}
               className="text-gray-600 hover:text-gray-800"
             >
-              &larr; Home
+              &larr; 首页
             </button>
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-500">
-                Attempt #{attempts.length}
+                第 {attempts.length} 次尝试
               </div>
               <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
-                Level: {getCurrentLevel()}
+                等级: {getCurrentLevel()}
               </div>
             </div>
           </div>
@@ -332,13 +332,13 @@ export default function TopicPracticePage() {
           {currentEvaluation.audioUrl && (
             <div className="mb-4 p-3 bg-blue-50 rounded-xl flex items-center justify-between">
               <span className="text-sm text-blue-700">
-                Your recording is saved
+                你的录音已保存
               </span>
               <button
                 onClick={() => playRecording(currentEvaluation.audioUrl!)}
                 className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
               >
-                Play Recording
+                播放录音
               </button>
             </div>
           )}
@@ -363,7 +363,7 @@ export default function TopicPracticePage() {
           {attempts.filter((a) => a.audioUrl).length > 1 && (
             <div className="mt-6 bg-white rounded-xl p-4 shadow">
               <h3 className="text-sm font-medium text-gray-700 mb-3">
-                Previous Recordings
+                之前的录音
               </h3>
               <div className="space-y-2">
                 {attempts
@@ -394,7 +394,7 @@ export default function TopicPracticePage() {
                         onClick={() => playRecording(attempt.audioUrl!)}
                         className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
                       >
-                        Play
+                        播放
                       </button>
                     </div>
                   ))}
@@ -429,17 +429,16 @@ export default function TopicPracticePage() {
             onClick={() => router.push('/')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
           >
-            &larr; Back to Home
+            &larr; 返回首页
           </button>
           <div className="flex items-center gap-4">
             {attempts.length > 0 && (
               <div className="text-sm text-gray-500">
-                {attempts.length} previous{' '}
-                {attempts.length === 1 ? 'attempt' : 'attempts'}
+                已尝试 {attempts.length} 次
               </div>
             )}
             <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
-              Level: {getCurrentLevel()}
+              等级: {getCurrentLevel()}
             </div>
           </div>
         </div>
@@ -473,10 +472,10 @@ export default function TopicPracticePage() {
         {/* Input Section */}
         <div className="bg-white rounded-2xl shadow-lg p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            Your Response
+            你的回答
             {attempts.length > 0 && (
               <span className="text-sm font-normal text-gray-500 ml-2">
-                (Attempt #{attempts.length + 1})
+                (第 {attempts.length + 1} 次尝试)
               </span>
             )}
           </h2>
@@ -491,7 +490,7 @@ export default function TopicPracticePage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Voice
+              语音
             </button>
             <button
               onClick={() => setInputMode('text')}
@@ -501,7 +500,7 @@ export default function TopicPracticePage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              Text
+              文字
             </button>
           </div>
 
@@ -521,13 +520,13 @@ export default function TopicPracticePage() {
             <div className="space-y-4">
               <TextInput
                 onSubmit={handleTextSubmit}
-                placeholder="Type your English response here..."
+                placeholder="在这里输入你的英语回答..."
                 disabled={isEvaluating}
               />
               {isEvaluating && (
                 <div className="text-center text-sm text-gray-600">
                   <span className="animate-spin inline-block mr-2">...</span>
-                  Evaluating your response...
+                  评估中...
                 </div>
               )}
             </div>
@@ -538,7 +537,7 @@ export default function TopicPracticePage() {
         {attempts.length > 0 && (
           <div className="mt-6 bg-white rounded-xl p-4 shadow">
             <h3 className="text-sm font-medium text-gray-700 mb-3">
-              Previous Attempts
+              之前的尝试
             </h3>
             <div className="space-y-2">
               {attempts.slice(-3).map((attempt) => (
@@ -568,7 +567,7 @@ export default function TopicPracticePage() {
                       onClick={() => playRecording(attempt.audioUrl!)}
                       className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
                     >
-                      Play
+                      播放
                     </button>
                   )}
                 </div>
@@ -580,10 +579,10 @@ export default function TopicPracticePage() {
         {/* Tips */}
         <div className="mt-6 p-4 bg-blue-50 rounded-xl">
           <div className="text-sm text-blue-800">
-            <strong>Tip:</strong>{' '}
+            <strong>提示：</strong>{' '}
             {topicData.type === 'translation'
-              ? "Express the meaning naturally - multiple correct answers are accepted! Focus on conveying the same idea, not word-for-word translation."
-              : "Be creative! Use the suggested vocabulary and grammar patterns to enrich your expression. There's no single correct answer."}
+              ? '自然地表达意思即可，多种正确答案都会被认可！重点是传达相同的意思，不需要逐字翻译。'
+              : '大胆发挥！利用建议的词汇和语法来丰富你的表达。没有唯一的正确答案。'}
           </div>
         </div>
       </div>

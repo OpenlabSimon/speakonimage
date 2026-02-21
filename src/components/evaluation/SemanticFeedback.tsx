@@ -30,8 +30,8 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
       {/* Semantic Accuracy */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
-          <h3 className="font-semibold text-blue-800">Semantic Delivery</h3>
-          <p className="text-xs text-blue-600">Did your English convey the Chinese meaning?</p>
+          <h3 className="font-semibold text-blue-800">语义传达</h3>
+          <p className="text-xs text-blue-600">你的英语是否传达了中文的含义？</p>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm mb-3">{semanticAccuracy.comment}</p>
@@ -40,7 +40,7 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
           {semanticAccuracy.conveyedPoints.length > 0 && (
             <div className="mb-3">
               <div className="text-xs font-medium text-green-700 mb-1">
-                Successfully Conveyed:
+                成功传达:
               </div>
               <ul className="space-y-1">
                 {semanticAccuracy.conveyedPoints.map((point, i) => (
@@ -57,7 +57,7 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
           {semanticAccuracy.missedPoints.length > 0 && (
             <div>
               <div className="text-xs font-medium text-red-700 mb-1">
-                Missed or Incorrect:
+                遗漏或错误:
               </div>
               <ul className="space-y-1">
                 {semanticAccuracy.missedPoints.map((point, i) => (
@@ -75,8 +75,8 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
       {/* Naturalness */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
-          <h3 className="font-semibold text-purple-800">Naturalness</h3>
-          <p className="text-xs text-purple-600">Does it sound like native English?</p>
+          <h3 className="font-semibold text-purple-800">自然度</h3>
+          <p className="text-xs text-purple-600">听起来是否像地道的英语？</p>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm mb-3">{naturalness.comment}</p>
@@ -84,7 +84,7 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
           {naturalness.issues.length > 0 && (
             <div className="mb-3">
               <div className="text-xs font-medium text-yellow-700 mb-1">
-                Could be more natural:
+                可以更自然:
               </div>
               <ul className="space-y-1">
                 {naturalness.issues.map((issue, i) => (
@@ -100,12 +100,12 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
           {naturalness.suggestions.length > 0 && (
             <div>
               <div className="text-xs font-medium text-green-700 mb-1">
-                More natural alternatives:
+                更自然的替代表达:
               </div>
               <ul className="space-y-1">
                 {naturalness.suggestions.map((suggestion, i) => (
                   <li key={i} className="text-sm text-green-700 bg-green-50 px-2 py-1 rounded">
-                    "{suggestion}"
+                    &quot;{suggestion}&quot;
                   </li>
                 ))}
               </ul>
@@ -117,7 +117,7 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
       {/* Vocabulary */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-teal-50 px-4 py-2 border-b border-teal-100">
-          <h3 className="font-semibold text-teal-800">Vocabulary</h3>
+          <h3 className="font-semibold text-teal-800">词汇</h3>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm mb-3">{vocabulary.comment}</p>
@@ -134,7 +134,7 @@ function TranslationFeedback({ evaluation }: { evaluation: TranslationEvaluation
 
           {vocabulary.improvements.length > 0 && (
             <div>
-              <div className="text-xs text-gray-500 mb-1">Try these words:</div>
+              <div className="text-xs text-gray-500 mb-1">试试这些词:</div>
               <div className="flex flex-wrap gap-1">
                 {vocabulary.improvements.map((word, i) => (
                   <span key={i} className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
@@ -159,7 +159,7 @@ function ExpressionFeedback({ evaluation }: { evaluation: ExpressionEvaluationSc
       {/* Relevance & Depth */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-100">
-          <h3 className="font-semibold text-emerald-800">Content Quality</h3>
+          <h3 className="font-semibold text-emerald-800">内容质量</h3>
         </div>
         <div className="p-4 space-y-3">
           <p className="text-gray-700 text-sm">{relevance.comment}</p>
@@ -167,7 +167,7 @@ function ExpressionFeedback({ evaluation }: { evaluation: ExpressionEvaluationSc
 
           {depth.strengths.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-green-700 mb-1">Strengths:</div>
+              <div className="text-xs font-medium text-green-700 mb-1">亮点:</div>
               <ul className="space-y-1">
                 {depth.strengths.map((s, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
@@ -181,7 +181,7 @@ function ExpressionFeedback({ evaluation }: { evaluation: ExpressionEvaluationSc
 
           {depth.suggestions.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-blue-700 mb-1">Could add:</div>
+              <div className="text-xs font-medium text-blue-700 mb-1">可以补充:</div>
               <ul className="space-y-1">
                 {depth.suggestions.map((s, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
@@ -198,14 +198,14 @@ function ExpressionFeedback({ evaluation }: { evaluation: ExpressionEvaluationSc
       {/* Creativity */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
-          <h3 className="font-semibold text-purple-800">Creativity</h3>
+          <h3 className="font-semibold text-purple-800">创意度</h3>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm mb-3">{creativity.comment}</p>
 
           {creativity.highlights.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-purple-700 mb-1">Creative highlights:</div>
+              <div className="text-xs font-medium text-purple-700 mb-1">创意亮点:</div>
               <ul className="space-y-1">
                 {creativity.highlights.map((h, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
@@ -222,7 +222,7 @@ function ExpressionFeedback({ evaluation }: { evaluation: ExpressionEvaluationSc
       {/* Language Quality */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
-          <h3 className="font-semibold text-blue-800">Language Quality</h3>
+          <h3 className="font-semibold text-blue-800">语言质量</h3>
         </div>
         <div className="p-4">
           <p className="text-gray-700 text-sm mb-2">{languageQuality.comment}</p>

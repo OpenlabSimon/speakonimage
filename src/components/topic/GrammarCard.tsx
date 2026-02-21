@@ -66,7 +66,7 @@ export function GrammarCard({ grammar }: GrammarCardProps) {
                   ${isActive ? 'ring-2 ring-amber-400 animate-pulse' : ''}
                   ${isLoading ? 'opacity-70' : ''}
                 `}
-                title="Play example"
+                title="播放例句"
               >
                 {isLoading ? '...' : '🔊'}
               </button>

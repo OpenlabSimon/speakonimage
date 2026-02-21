@@ -72,7 +72,7 @@ export function VoiceRecorder({
   const handleSubmitVoice = async (blob: Blob) => {
     setProcessing(true);
     setApiError(null);
-    setProcessingStep('Converting audio...');
+    setProcessingStep('转换音频...');
 
     try {
       // Try to convert webm/opus to WAV for Azure compatibility
@@ -87,7 +87,7 @@ export function VoiceRecorder({
         // Continue with original blob
       }
 
-      setProcessingStep('Uploading audio...');
+      setProcessingStep('上传音频...');
 
       const formData = new FormData();
       formData.append('audio', audioToSend);
@@ -99,7 +99,7 @@ export function VoiceRecorder({
         formData.append('sessionId', sessionId);
       }
 
-      setProcessingStep('Transcribing & evaluating...');
+      setProcessingStep('转写并评估中...');
 
       const response = await fetch('/api/submissions/voice', {
         method: 'POST',
@@ -111,8 +111,8 @@ export function VoiceRecorder({
 
       if (result.success) {
         if (result.data.status === 'no_match') {
-          setApiError('No speech detected. Please try again.');
-          onError?.('No speech detected. Please try again.');
+          setApiError('未检测到语音，请重试。');
+          onError?.('未检测到语音，请重试。');
           return;
         }
 
@@ -127,13 +127,13 @@ export function VoiceRecorder({
           overallScore: result.data.overallScore,
         });
       } else {
-        const errorMsg = result.error || 'Voice submission failed';
+        const errorMsg = result.error || '语音提交失败';
         setApiError(errorMsg);
         onError?.(errorMsg);
       }
     } catch (err) {
       console.error('Voice submission error:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Failed to process voice recording';
+      const errorMsg = err instanceof Error ? err.message : '处理语音录音失败';
       setApiError(errorMsg);
       onError?.(errorMsg);
     } finally {
@@ -152,7 +152,7 @@ export function VoiceRecorder({
   if (!isSupported) {
     return (
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
-        Voice recording is not supported in this browser. Please use Chrome, Firefox, or Safari.
+        当前浏览器不支持语音录制，请使用 Chrome、Firefox 或 Safari。
       </div>
     );
   }
@@ -194,15 +194,15 @@ export function VoiceRecorder({
 
       {/* Status Text */}
       <div className="text-center text-sm text-gray-600">
-        {isRecording && 'Recording... Click to stop and evaluate'}
-        {state === 'processing' && !processing && 'Processing audio...'}
+        {isRecording && '录音中...点击停止并评估'}
+        {state === 'processing' && !processing && '处理音频中...'}
         {processing && (
           <span className="flex items-center justify-center gap-2">
             <span className="animate-spin">⏳</span>
-            {processingStep || 'Processing...'}
+            {processingStep || '处理中...'}
           </span>
         )}
-        {state === 'idle' && !audioBlob && !processing && !transcription && 'Click the microphone to start recording'}
+        {state === 'idle' && !audioBlob && !processing && !transcription && '点击麦克风开始录音'}
       </div>
 
       {/* Audio Playback */}
@@ -215,9 +215,9 @@ export function VoiceRecorder({
       {/* Transcription Result */}
       {transcription && !processing && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-          <div className="text-sm font-medium text-green-700 mb-1">Transcription:</div>
+          <div className="text-sm font-medium text-green-700 mb-1">转写结果:</div>
           <div className="text-gray-800">{transcription}</div>
-          <div className="text-xs text-green-600 mt-2">Evaluation loading...</div>
+          <div className="text-xs text-green-600 mt-2">评估加载中...</div>
         </div>
       )}
 
@@ -228,7 +228,7 @@ export function VoiceRecorder({
             onClick={handleReRecord}
             className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
           >
-            Record Again
+            重新录音
           </button>
         </div>
       )}

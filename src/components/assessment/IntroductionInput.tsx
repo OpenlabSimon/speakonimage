@@ -68,7 +68,7 @@ export function IntroductionInput({
   // Submit text for assessment
   const handleTextSubmit = async () => {
     if (!textInput.trim()) {
-      setError('Please enter your introduction');
+      setError('请输入你的自我介绍');
       return;
     }
 
@@ -116,19 +116,19 @@ export function IntroductionInput({
       const transcribeResult = await transcribeResponse.json();
 
       if (!transcribeResult.success) {
-        throw new Error(transcribeResult.error || 'Transcription failed');
+        throw new Error(transcribeResult.error || '转写失败');
       }
 
       const transcription = transcribeResult.data.text;
       if (!transcription || transcription.trim() === '') {
-        throw new Error('No speech detected. Please try again.');
+        throw new Error('未检测到语音，请重试。');
       }
 
       // Then assess the transcription
       await assessIntroduction(transcription);
     } catch (err) {
       console.error('Voice assessment error:', err);
-      setError(err instanceof Error ? err.message : 'Voice assessment failed');
+      setError(err instanceof Error ? err.message : '语音评估失败');
     } finally {
       setIsAssessing(false);
     }
@@ -149,7 +149,7 @@ export function IntroductionInput({
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Assessment failed');
+        throw new Error(result.error || '评估失败');
       }
 
       setAssessmentResult(result.data);
@@ -162,7 +162,7 @@ export function IntroductionInput({
       );
     } catch (err) {
       console.error('Assessment error:', err);
-      setError(err instanceof Error ? err.message : 'Assessment failed');
+      setError(err instanceof Error ? err.message : '评估失败');
     } finally {
       setIsAssessing(false);
     }
@@ -181,11 +181,10 @@ export function IntroductionInput({
     <div className="bg-white rounded-2xl shadow-lg p-6">
       <div className="text-center mb-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-2">
-          Introduce Yourself
+          自我介绍
         </h2>
         <p className="text-gray-600 text-sm">
-          Mix English and Chinese naturally. We&apos;ll determine the best
-          practice level for you.
+          用中英文混合自然表达，我们会为你确定最佳练习等级。
         </p>
       </div>
 
@@ -199,7 +198,7 @@ export function IntroductionInput({
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          Text
+          文字
         </button>
         <button
           onClick={() => setInputMode('voice')}
@@ -209,7 +208,7 @@ export function IntroductionInput({
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          Voice
+          语音
         </button>
       </div>
 
@@ -226,7 +225,7 @@ export function IntroductionInput({
 
           {/* Example Prompts */}
           <div className="space-y-2">
-            <p className="text-xs text-gray-500">Try an example:</p>
+            <p className="text-xs text-gray-500">试试这些例子：</p>
             <div className="flex flex-wrap gap-2">
               {EXAMPLE_PROMPTS.map((example, idx) => (
                 <button
@@ -252,10 +251,10 @@ export function IntroductionInput({
             {isAssessing ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="animate-spin">...</span>
-                Assessing...
+                评估中...
               </span>
             ) : (
-              'Assess My Level'
+              '评估我的等级'
             )}
           </button>
         </div>
@@ -266,8 +265,7 @@ export function IntroductionInput({
         <div className="flex flex-col gap-4">
           {!isSupported ? (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-              Voice recording is not supported in this browser. Please use
-              Chrome, Firefox, or Safari.
+              当前浏览器不支持语音录制，请使用 Chrome、Firefox 或 Safari。
             </div>
           ) : (
             <>
@@ -305,18 +303,17 @@ export function IntroductionInput({
 
               {/* Status Text */}
               <div className="text-center text-sm text-gray-600">
-                {isRecording && 'Recording... Click to stop'}
-                {state === 'processing' && !isAssessing && 'Processing audio...'}
+                {isRecording && '录音中...点击停止'}
+                {state === 'processing' && !isAssessing && '处理音频中...'}
                 {isAssessing && (
                   <span className="flex items-center justify-center gap-2">
                     <span className="animate-spin">...</span>
-                    Assessing your level...
+                    正在评估你的等级...
                   </span>
                 )}
                 {state === 'idle' && !audioUrl && !isAssessing && (
                   <p className="text-gray-500">
-                    Click &quot;Start&quot; and introduce yourself in English and
-                    Chinese
+                    点击 &quot;Start&quot; 用中英文介绍你自己
                   </p>
                 )}
               </div>
@@ -348,13 +345,13 @@ export function IntroductionInput({
       {assessmentResult && (
         <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-green-700 font-medium">Your Level:</span>
+            <span className="text-green-700 font-medium">你的等级:</span>
             <span className="text-2xl font-bold text-green-800">
               {assessmentResult.estimatedLevel}
             </span>
           </div>
           <div className="text-xs text-green-600">
-            Confidence: {Math.round(assessmentResult.confidence * 100)}%
+            置信度: {Math.round(assessmentResult.confidence * 100)}%
           </div>
           {assessmentResult.analysis.observations.length > 0 && (
             <div className="mt-2 text-xs text-green-700">
@@ -375,7 +372,7 @@ export function IntroductionInput({
             onClick={onSkip}
             className="text-sm text-gray-500 hover:text-gray-700 underline"
           >
-            Skip and choose level manually
+            跳过，手动选择等级
           </button>
         </div>
       )}

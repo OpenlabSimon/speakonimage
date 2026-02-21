@@ -11,8 +11,8 @@ export function GrammarErrors({ errors }: GrammarErrorsProps) {
     return (
       <div className="bg-green-50 rounded-xl p-4 text-center">
         <div className="text-2xl mb-2">🎉</div>
-        <div className="text-green-700 font-medium">No grammar errors!</div>
-        <div className="text-green-600 text-sm">Great job on your grammar.</div>
+        <div className="text-green-700 font-medium">没有语法错误！</div>
+        <div className="text-green-600 text-sm">你的语法很棒。</div>
       </div>
     );
   }
@@ -31,20 +31,20 @@ export function GrammarErrors({ errors }: GrammarErrorsProps) {
   const getSeverityLabel = (severity: 'low' | 'medium' | 'high') => {
     switch (severity) {
       case 'high':
-        return { text: 'Major', color: 'text-red-600 bg-red-100' };
+        return { text: '严重', color: 'text-red-600 bg-red-100' };
       case 'medium':
-        return { text: 'Minor', color: 'text-yellow-700 bg-yellow-100' };
+        return { text: '轻微', color: 'text-yellow-700 bg-yellow-100' };
       default:
-        return { text: 'Tip', color: 'text-orange-600 bg-orange-100' };
+        return { text: '建议', color: 'text-orange-600 bg-orange-100' };
     }
   };
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-gray-800">Grammar Corrections</h3>
+        <h3 className="font-semibold text-gray-800">语法纠正</h3>
         <span className="text-sm text-gray-500">
-          {errors.length} {errors.length === 1 ? 'issue' : 'issues'}
+          {errors.length} 个问题
         </span>
       </div>
 
@@ -65,19 +65,19 @@ export function GrammarErrors({ errors }: GrammarErrorsProps) {
             {/* Error correction */}
             <div className="flex items-center gap-3 mb-2">
               <div className="flex-1">
-                <div className="text-xs text-gray-500 mb-0.5">Your text:</div>
+                <div className="text-xs text-gray-500 mb-0.5">你的原文:</div>
                 <div className="text-red-600 line-through">{error.original}</div>
               </div>
               <div className="text-gray-400 text-xl">→</div>
               <div className="flex-1">
-                <div className="text-xs text-gray-500 mb-0.5">Correct:</div>
+                <div className="text-xs text-gray-500 mb-0.5">正确:</div>
                 <div className="text-green-600 font-medium">{error.corrected}</div>
               </div>
             </div>
 
             {/* Rule explanation */}
             <div className="bg-white/50 rounded-lg px-3 py-2 mt-2">
-              <div className="text-xs text-gray-500 mb-0.5">Grammar rule:</div>
+              <div className="text-xs text-gray-500 mb-0.5">语法规则:</div>
               <div className="text-sm text-gray-700">{error.rule}</div>
             </div>
           </div>

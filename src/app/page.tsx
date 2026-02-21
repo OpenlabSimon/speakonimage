@@ -7,7 +7,7 @@ import { IntroductionInput } from '@/components/assessment/IntroductionInput';
 import { useLevelHistory } from '@/hooks/useLevelHistory';
 import type { TopicType, CEFRLevel } from '@/types';
 
-type PageStep = 'assessment' | 'topic-input';
+type PageStep = 'assessment' | 'post-assessment' | 'topic-input';
 
 export default function Home() {
   const router = useRouter();
@@ -26,6 +26,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showManualLevelSelect, setShowManualLevelSelect] = useState(false);
   const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
+  const [introductionText, setIntroductionText] = useState<string>('');
 
   // Determine initial step based on level history
   useEffect(() => {
@@ -42,10 +43,11 @@ export default function Home() {
   const handleAssessmentComplete = (
     level: CEFRLevel,
     confidence: number,
-    introductionText: string
+    introText: string
   ) => {
-    initializeLevel(level, confidence, introductionText);
-    setStep('topic-input');
+    initializeLevel(level, confidence, introText);
+    setIntroductionText(introText);
+    setStep('post-assessment');
   };
 
   // Handle skip assessment (manual level selection)
@@ -60,10 +62,35 @@ export default function Home() {
     setStep('topic-input');
   };
 
+  // Handle "继续练习自我介绍" — create synthetic intro topic and navigate
+  const handlePracticeIntro = () => {
+    const assessedLevel = getCurrentLevel();
+    const introTopic = {
+      type: 'expression',
+      chinesePrompt: '用英语做一个完整的自我介绍，包括你的基本信息、工作或学习情况、兴趣爱好等。',
+      guidingQuestions: [
+        '你叫什么名字？做什么工作/学什么专业？',
+        '你有什么兴趣爱好？',
+        '你为什么想学英语？',
+      ],
+      suggestedVocab: [],
+      grammarHints: [],
+      difficultyMetadata: {
+        targetCefr: assessedLevel,
+        vocabComplexity: 0,
+        grammarComplexity: 0,
+      },
+    };
+
+    sessionStorage.setItem('currentTopic', JSON.stringify(introTopic));
+    sessionStorage.removeItem('topicAttempts');
+    router.push('/topic/practice');
+  };
+
   // Handle generate topic
   const handleGenerate = async () => {
     if (!inputText.trim()) {
-      setError('Please enter a topic');
+      setError('请输入话题');
       return;
     }
 
@@ -86,7 +113,7 @@ export default function Home() {
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to generate topic');
+        throw new Error(result.error || '生成话题失败');
       }
 
       // Store topic data in sessionStorage
@@ -96,7 +123,7 @@ export default function Home() {
       router.push('/topic/practice');
     } catch (err) {
       console.error('Generation error:', err);
-      setError(err instanceof Error ? err.message : 'Generation failed');
+      setError(err instanceof Error ? err.message : '生成失败');
     } finally {
       setIsGenerating(false);
     }
@@ -108,7 +135,7 @@ export default function Home() {
       <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">...</div>
-          <div className="text-gray-600">Loading...</div>
+          <div className="text-gray-600">加载中...</div>
         </div>
       </div>
     );
@@ -123,7 +150,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {history && step === 'topic-input' && (
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500">Level:</span>
+                <span className="text-gray-500">等级:</span>
                 <span className="font-semibold text-blue-600">
                   {history.currentLevel}
                 </span>
@@ -131,7 +158,7 @@ export default function Home() {
                   onClick={() => setStep('assessment')}
                   className="text-xs text-gray-400 hover:text-gray-600 underline"
                 >
-                  reassess
+                  重新评估
                 </button>
               </div>
             )}
@@ -144,7 +171,7 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-8">
           <p className="text-gray-600">
-            Practice expressing Chinese thoughts in English
+            用英语表达中文思维
           </p>
         </div>
 
@@ -160,7 +187,7 @@ export default function Home() {
         {showManualLevelSelect && (
           <div className="bg-white rounded-2xl shadow-lg p-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">
-              Choose Your Level
+              选择你的等级
             </h2>
             <div className="grid grid-cols-2 gap-3 mb-6">
               {(['A2', 'B1', 'B2', 'C1'] as CEFRLevel[]).map((level) => (
@@ -175,10 +202,10 @@ export default function Home() {
                 >
                   <div className="font-bold text-lg">{level}</div>
                   <div className="text-xs text-gray-500">
-                    {level === 'A2' && 'Elementary'}
-                    {level === 'B1' && 'Intermediate'}
-                    {level === 'B2' && 'Upper Intermediate'}
-                    {level === 'C1' && 'Advanced'}
+                    {level === 'A2' && '初级'}
+                    {level === 'B1' && '中级'}
+                    {level === 'B2' && '中高级'}
+                    {level === 'C1' && '高级'}
                   </div>
                 </button>
               ))}
@@ -188,13 +215,49 @@ export default function Home() {
                 onClick={() => setShowManualLevelSelect(false)}
                 className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200"
               >
-                Back
+                返回
               </button>
               <button
                 onClick={handleManualLevelConfirm}
                 className="flex-1 py-3 rounded-xl font-semibold bg-blue-500 text-white hover:bg-blue-600"
               >
-                Start with {manualLevel}
+                以 {manualLevel} 开始
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Post-Assessment Choice */}
+        {step === 'post-assessment' && (
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-2 text-center">
+              评估完成！
+            </h2>
+            <p className="text-sm text-gray-500 mb-6 text-center">
+              选择接下来的练习方式
+            </p>
+            <div className="grid grid-cols-1 gap-4">
+              <button
+                onClick={handlePracticeIntro}
+                className="p-5 rounded-xl border-2 border-emerald-200 hover:border-emerald-500 bg-emerald-50 hover:bg-emerald-100 transition-all text-left"
+              >
+                <div className="text-lg font-semibold text-emerald-800 mb-1">
+                  继续练习自我介绍
+                </div>
+                <div className="text-sm text-emerald-600">
+                  用刚才的自我介绍内容进行口语练习，获得详细反馈
+                </div>
+              </button>
+              <button
+                onClick={() => setStep('topic-input')}
+                className="p-5 rounded-xl border-2 border-blue-200 hover:border-blue-500 bg-blue-50 hover:bg-blue-100 transition-all text-left"
+              >
+                <div className="text-lg font-semibold text-blue-800 mb-1">
+                  开始新话题练习
+                </div>
+                <div className="text-sm text-blue-600">
+                  选择新的话题进行翻译挑战或话题表达练习
+                </div>
               </button>
             </div>
           </div>
@@ -206,7 +269,7 @@ export default function Home() {
             {/* Topic Type Selection */}
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                Select Practice Mode
+                选择练习模式
               </h2>
               <div className="grid grid-cols-2 gap-4">
                 <button
@@ -217,12 +280,12 @@ export default function Home() {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="text-2xl mb-2">Translation</div>
+                  <div className="text-2xl mb-2">翻译挑战</div>
                   <div className="font-medium text-gray-800">
-                    Translation Challenge
+                    中译英练习
                   </div>
                   <div className="text-sm text-gray-500 mt-1">
-                    Read Chinese, express the same meaning in English
+                    看中文，用英语表达相同的意思
                   </div>
                 </button>
                 <button
@@ -233,12 +296,12 @@ export default function Home() {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <div className="text-2xl mb-2">Expression</div>
+                  <div className="text-2xl mb-2">话题表达</div>
                   <div className="font-medium text-gray-800">
-                    Topic Expression
+                    自由表达练习
                   </div>
                   <div className="text-sm text-gray-500 mt-1">
-                    Express your thoughts freely on a topic
+                    围绕话题自由表达你的想法
                   </div>
                 </button>
               </div>
@@ -248,16 +311,16 @@ export default function Home() {
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">
                 {topicType === 'translation'
-                  ? 'Enter Topic Keywords'
-                  : 'Enter Your Topic'}
+                  ? '输入话题关键词'
+                  : '输入你的话题'}
               </h2>
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder={
                   topicType === 'translation'
-                    ? 'E.g.: coffee shop, weekend plans, travel experience...'
-                    : 'E.g.: my ideal job, technology in daily life...'
+                    ? '例如：咖啡店、周末计划、旅行经历...'
+                    : '例如：我的理想工作、日常生活中的科技...'
                 }
                 className="w-full h-24 px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -266,14 +329,14 @@ export default function Home() {
               <div className="mt-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">
-                    Practice level:
+                    练习等级:
                   </span>
                   <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
                     {getCurrentLevel()}
                   </span>
                 </div>
                 <span className="text-xs text-gray-400">
-                  Level adjusts based on your performance
+                  等级会根据你的表现自动调整
                 </span>
               </div>
             </div>
@@ -300,26 +363,26 @@ export default function Home() {
               {isGenerating ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="animate-spin">...</span>
-                  Generating...
+                  生成中...
                 </span>
               ) : (
-                'Generate Practice'
+                '生成练习'
               )}
             </button>
 
             {/* Quick Start Examples */}
             <div className="mt-8">
               <h3 className="text-sm font-medium text-gray-500 mb-3 text-center">
-                Quick Start
+                快速开始
               </h3>
               <div className="flex flex-wrap justify-center gap-2">
                 {[
-                  'coffee shop',
-                  'weekend plans',
-                  'travel',
-                  'food',
-                  'job interview',
-                  'learning English',
+                  '咖啡店',
+                  '周末计划',
+                  '旅行',
+                  '美食',
+                  '求职面试',
+                  '学习英语',
                 ].map((example) => (
                   <button
                     key={example}

@@ -33,7 +33,7 @@ export function TextInput({ onSubmit, disabled, placeholder }: TextInputProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder || "Type your English response here..."}
+        placeholder={placeholder || "在这里输入你的英语回答..."}
         disabled={disabled}
         className={`
           w-full h-32 px-4 py-3 border border-gray-200 rounded-xl resize-none
@@ -43,8 +43,8 @@ export function TextInput({ onSubmit, disabled, placeholder }: TextInputProps) {
       />
       <div className="flex justify-between items-center">
         <div className="text-sm text-gray-500">
-          {wordCount} words / {text.length} characters
-          <span className="ml-2 text-xs text-gray-400">(Ctrl+Enter to submit)</span>
+          {wordCount} 词 / {text.length} 字符
+          <span className="ml-2 text-xs text-gray-400">(Ctrl+Enter 提交)</span>
         </div>
         <button
           onClick={handleSubmit}
@@ -57,7 +57,7 @@ export function TextInput({ onSubmit, disabled, placeholder }: TextInputProps) {
             }
           `}
         >
-          Submit
+          提交
         </button>
       </div>
     </div>

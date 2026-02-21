@@ -23,11 +23,11 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
   const scoreDiff = previousAttempt ? currentScore - previousAttempt.overallScore : 0;
 
   const getTrendIcon = () => {
-    if (scoreDiff > 5) return { icon: '📈', text: 'Great improvement!', color: 'text-green-600' };
-    if (scoreDiff > 0) return { icon: '↗️', text: 'Getting better!', color: 'text-green-600' };
-    if (scoreDiff === 0) return { icon: '➡️', text: 'Same level', color: 'text-yellow-600' };
-    if (scoreDiff > -5) return { icon: '↘️', text: 'Slight dip', color: 'text-orange-600' };
-    return { icon: '📉', text: 'Keep trying!', color: 'text-red-600' };
+    if (scoreDiff > 5) return { icon: '📈', text: '进步很大！', color: 'text-green-600' };
+    if (scoreDiff > 0) return { icon: '↗️', text: '越来越好！', color: 'text-green-600' };
+    if (scoreDiff === 0) return { icon: '➡️', text: '水平持平', color: 'text-yellow-600' };
+    if (scoreDiff > -5) return { icon: '↘️', text: '略有下降', color: 'text-orange-600' };
+    return { icon: '📉', text: '继续加油！', color: 'text-red-600' };
   };
 
   const trend = getTrendIcon();
@@ -35,7 +35,7 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-        <h3 className="font-semibold text-gray-800">Your Progress</h3>
+        <h3 className="font-semibold text-gray-800">你的进步</h3>
       </div>
 
       <div className="p-4">
@@ -43,12 +43,12 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
         {previousAttempt && (
           <div className="flex items-center justify-center gap-4 mb-4 py-3 bg-gray-50 rounded-lg">
             <div className="text-center">
-              <div className="text-xs text-gray-500">Previous</div>
+              <div className="text-xs text-gray-500">上次</div>
               <div className="text-2xl font-bold text-gray-400">{previousAttempt.overallScore}</div>
             </div>
             <div className="text-2xl">{trend.icon}</div>
             <div className="text-center">
-              <div className="text-xs text-gray-500">Now</div>
+              <div className="text-xs text-gray-500">这次</div>
               <div className="text-2xl font-bold text-blue-600">{currentScore}</div>
             </div>
             <div className={`text-sm font-medium ${trend.color}`}>
@@ -64,7 +64,7 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
 
         {/* History timeline */}
         <div className="space-y-2">
-          <div className="text-xs text-gray-500 mb-2">All attempts:</div>
+          <div className="text-xs text-gray-500 mb-2">所有尝试:</div>
           {attempts.slice().reverse().map((attempt) => (
             <div
               key={attempt.attemptNumber}

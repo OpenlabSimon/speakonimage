@@ -41,54 +41,46 @@ export function ScoreOverview({ evaluation, overallScore }: ScoreOverviewProps) 
   const scores = evaluation.type === 'translation'
     ? [
         {
-          label: 'Semantic Accuracy',
-          labelCn: '语义准确度',
+          label: '语义准确度',
           score: evaluation.semanticAccuracy.score,
-          description: 'Did you convey the meaning?'
+          description: '是否准确传达了原意？'
         },
         {
-          label: 'Naturalness',
-          labelCn: '自然度',
+          label: '自然度',
           score: evaluation.naturalness.score,
-          description: 'Does it sound natural?'
+          description: '表达是否自然地道？'
         },
         {
-          label: 'Grammar',
-          labelCn: '语法',
+          label: '语法',
           score: evaluation.grammar.score,
-          description: 'Grammar accuracy'
+          description: '语法是否正确？'
         },
         {
-          label: 'Vocabulary',
-          labelCn: '词汇',
+          label: '词汇',
           score: evaluation.vocabulary.score,
-          description: 'Word choices'
+          description: '用词是否恰当？'
         },
       ]
     : [
         {
-          label: 'Relevance',
-          labelCn: '相关性',
+          label: '相关性',
           score: evaluation.relevance.score,
-          description: 'On topic?'
+          description: '是否紧扣话题？'
         },
         {
-          label: 'Depth',
-          labelCn: '深度',
+          label: '丰富度',
           score: evaluation.depth.score,
-          description: 'Rich content?'
+          description: '内容是否充实？'
         },
         {
-          label: 'Creativity',
-          labelCn: '创意',
+          label: '创意度',
           score: evaluation.creativity.score,
-          description: 'Original expression?'
+          description: '表达是否有创意？'
         },
         {
-          label: 'Language',
-          labelCn: '语言质量',
+          label: '语言质量',
           score: evaluation.languageQuality.score,
-          description: 'Grammar & vocab'
+          description: '语法和用词质量'
         },
       ];
 
@@ -101,21 +93,20 @@ export function ScoreOverview({ evaluation, overallScore }: ScoreOverviewProps) 
           {overallScore}
         </div>
         <div className={`text-2xl font-semibold ${getScoreColor(overallScore)} mt-1`}>
-          Grade {grade}
+          {grade} 级
         </div>
         <div className="text-sm text-gray-500 mt-2">
-          CEFR Level: <span className="font-semibold">{evaluation.overallCefrEstimate}</span>
+          CEFR等级: <span className="font-semibold">{evaluation.overallCefrEstimate}</span>
         </div>
       </div>
 
       {/* Individual Scores */}
       <div className="space-y-3">
-        {scores.map(({ label, labelCn, score, description }) => (
+        {scores.map(({ label, score, description }) => (
           <div key={label} className="bg-gray-50 rounded-xl p-3">
             <div className="flex justify-between items-center mb-1">
               <div>
                 <span className="font-medium text-gray-800">{label}</span>
-                <span className="text-xs text-gray-400 ml-2">{labelCn}</span>
               </div>
               <span className={`font-bold ${getScoreColor(score)}`}>{score}</span>
             </div>
