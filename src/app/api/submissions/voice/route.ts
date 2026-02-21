@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { put } from '@vercel/blob';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
 import { getLLMProvider } from '@/lib/llm';
 import {
@@ -15,7 +16,7 @@ import type { ApiResponse } from '@/types';
 
 /**
  * Voice submission endpoint
- * Accepts audio file + topic data, returns transcription + evaluation
+ * Accepts audio file + topic data, stores audio, returns transcription + evaluation
  */
 export async function POST(request: NextRequest) {
   try {
@@ -60,8 +61,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Transcribe audio
+    // Step 1: Store audio recording (if Vercel Blob is configured)
+    let audioUrl: string | undefined;
     const arrayBuffer = await audioFile.arrayBuffer();
+
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const timestamp = Date.now();
+        const filename = `recordings/${timestamp}-${Math.random().toString(36).slice(2)}.webm`;
+
+        const blob = await put(filename, Buffer.from(arrayBuffer), {
+          access: 'public',
+          contentType: audioFile.type || 'audio/webm',
+        });
+
+        audioUrl = blob.url;
+        console.log('Audio stored:', audioUrl);
+      } catch (storageError) {
+        console.error('Audio storage failed (continuing without storage):', storageError);
+        // Continue without storage - don't fail the request
+      }
+    }
+
+    // Step 2: Transcribe audio
     const audioBlob = new Blob([arrayBuffer], { type: audioFile.type });
 
     const transcriptionResult = await transcribeAudio(audioBlob, {
@@ -81,11 +103,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<ApiResponse<{
         transcription: string;
         status: 'no_match';
+        audioUrl?: string;
       }>>({
         success: true,
         data: {
           transcription: '',
           status: 'no_match',
+          audioUrl,
         },
       });
     }
@@ -101,6 +125,7 @@ export async function POST(request: NextRequest) {
         confidence: number | undefined;
         duration: number | undefined;
         status: 'success';
+        audioUrl?: string;
       }>>({
         success: true,
         data: {
@@ -108,11 +133,12 @@ export async function POST(request: NextRequest) {
           confidence: transcriptionResult.confidence,
           duration: transcriptionResult.duration,
           status: 'success',
+          audioUrl,
         },
       });
     }
 
-    // Step 2: Evaluate the transcription
+    // Step 3: Evaluate the transcription
     const llm = getLLMProvider();
     const vocabWords = topicData.suggestedVocab?.map((v: { word: string }) => v.word) || [];
 
@@ -173,6 +199,7 @@ export async function POST(request: NextRequest) {
       evaluation: typeof evaluation;
       overallScore: number;
       inputMethod: 'voice';
+      audioUrl?: string;
     }>>({
       success: true,
       data: {
@@ -182,6 +209,7 @@ export async function POST(request: NextRequest) {
         evaluation,
         overallScore,
         inputMethod: 'voice',
+        audioUrl,
       },
     });
   } catch (error) {
