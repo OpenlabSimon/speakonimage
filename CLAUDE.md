@@ -48,6 +48,7 @@ src/
 │   └── api/                # API Routes
 │       ├── topics/         # 题目生成/查询
 │       ├── submissions/    # 提交/评价
+│       ├── sessions/       # 对话会话管理（记忆系统）
 │       ├── speech/         # 语音转写
 │       └── speakers/       # 声纹管理
 ├── components/             # React 组件
@@ -60,11 +61,17 @@ src/
 │   │   ├── provider.ts     # 统一接口
 │   │   ├── gemini.ts       # Gemini 实现
 │   │   └── prompts/        # Prompt 模板
+│   ├── memory/             # 记忆系统
+│   │   ├── ConversationManager.ts  # 会话/消息管理
+│   │   ├── ContextCompressor.ts    # 长对话压缩
+│   │   ├── SessionExtractor.ts     # 学习数据提取
+│   │   └── types.ts                # 类型定义
 │   ├── speech/             # Azure STT 封装
 │   ├── evaluation/         # 评价引擎逻辑 (语义传达为核心)
 │   └── profile/            # 用户档案管理
 ├── hooks/                  # 自定义 React Hooks
 │   ├── useRecorder.ts      # 录音 hook
+│   ├── useConversation.ts  # 会话管理 hook
 │   ├── useTTS.ts           # 发音 hook
 │   └── useEvaluation.ts    # 评价 hook
 ├── types/                  # TypeScript 类型定义
@@ -122,6 +129,59 @@ BLOB_READ_WRITE_TOKEN=...              # Vercel Blob (可选)
 - 所有LLM prompt 放在 `lib/llm/prompts/` 目录，便于迭代
 - 数据库迁移用 Prisma Migrate
 - 中文注释写在关键业务逻辑处，其余用英文
+
+## 记忆系统 (Memory System) — 已实现代码，待运行迁移
+
+### 核心闭环
+```
+对话结束 → LLM 自动提取学习数据 → 存到 PostgreSQL → 下次对话时注入 system prompt → 闭环
+```
+
+### 新增数据库表（待迁移）
+- **ChatSession** — 对话会话记录（accountId, speakerId, topicId, status, contextSummary, extractedData）
+- **ChatMessage** — 单条消息记录（sessionId, role, content, contentType, metadata）
+
+### ⚠️ 待执行迁移
+代码已就绪，但数据库迁移尚未运行（Neon数据库连接暂时不可达）。当数据库可用时执行：
+```bash
+npx prisma migrate dev --name add_chat_memory
+```
+手动SQL备份：`prisma/migrations/manual/add_chat_memory.sql`
+
+### 新增文件
+| 文件 | 用途 |
+|------|------|
+| `src/lib/memory/types.ts` | 记忆系统类型定义 |
+| `src/lib/memory/ConversationManager.ts` | 会话和消息CRUD，上下文构建 |
+| `src/lib/memory/ContextCompressor.ts` | 长对话压缩（>20条消息时LLM摘要） |
+| `src/lib/memory/SessionExtractor.ts` | 会话结束时LLM提取学习数据 |
+| `src/lib/memory/index.ts` | 模块导出 |
+| `src/lib/llm/prompts/extract-session.ts` | 学习数据提取的LLM prompt |
+| `src/app/api/sessions/route.ts` | POST创建/GET列出会话 |
+| `src/app/api/sessions/[id]/route.ts` | GET详情/DELETE结束会话/PATCH更新 |
+| `src/app/api/sessions/[id]/messages/route.ts` | POST添加消息/GET获取消息 |
+| `src/hooks/useConversation.ts` | React hook管理客户端会话状态 |
+
+### 已修改文件
+| 文件 | 变更 |
+|------|------|
+| `prisma/schema.prisma` | 新增ChatSession、ChatMessage表及关系 |
+| `src/app/api/submissions/route.ts` | 提交时自动创建/关联会话，记录用户/AI消息 |
+| `src/types/index.ts` | 导出记忆系统相关类型 |
+
+### 后续开发：中期记忆（用户画像）
+Phase 2 准备工作（代码基础已就绪，待实现）：
+- `src/lib/profile/ProfileManager.ts` — 聚合用户画像
+- `src/lib/profile/ProfileInjector.ts` — 构建含画像的system prompt
+- GrammarError / VocabularyUsage 按 (speakerId, pattern/word) 聚合统计
+- 间隔重复算法（FSRS）用于词汇和语法点复习
+
+### 后续开发：长期记忆（间隔重复）
+Phase 3 准备工作（预留字段和接口）：
+- VocabularyUsage / GrammarError 添加 easeFactor, intervalDays, nextReviewDate
+- `src/lib/spaced-repetition/FSRSAlgorithm.ts`
+- `src/lib/spaced-repetition/ReviewScheduler.ts`
+- `src/app/api/review/route.ts`
 
 ## Phase 2+ 可选功能
 

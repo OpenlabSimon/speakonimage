@@ -271,3 +271,23 @@ export interface TTSEngine {
   stop(): void;
   isSupported(): boolean;
 }
+
+// ============================================
+// Memory System Types (re-exported)
+// ============================================
+
+// Session types
+export type SessionType = 'practice' | 'review';
+export type SessionStatus = 'active' | 'ended';
+export type MessageRole = 'user' | 'assistant' | 'system';
+export type MessageContentType = 'text' | 'evaluation';
+
+// Re-export memory types for convenience
+export type {
+  ChatSession,
+  ChatMessage,
+  SessionExtractionResult,
+  ConversationContext,
+  ExtractedVocabulary,
+  ExtractedError,
+} from '@/lib/memory/types';

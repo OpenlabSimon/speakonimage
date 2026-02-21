@@ -13,11 +13,16 @@ import {
   EXPRESSION_EVALUATION_SYSTEM_PROMPT,
   buildExpressionEvaluationPrompt,
 } from '@/lib/llm/prompts/evaluate-expression';
+import {
+  getOrCreateSessionForTopic,
+  addMessage,
+} from '@/lib/memory/ConversationManager';
 import type { ApiResponse } from '@/types';
 
 // Request body schema
 const SubmissionRequestSchema = z.object({
   topicId: z.string().uuid().optional(), // Topic ID from database
+  sessionId: z.string().uuid().optional(), // Chat session ID for memory
   topicType: z.enum(['translation', 'expression']),
   topicContent: z.object({
     chinesePrompt: z.string(),
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { topicId, topicType, topicContent, userResponse, inputMethod, historyAttempts } = parsed.data;
+    const { topicId, sessionId, topicType, topicContent, userResponse, inputMethod, historyAttempts } = parsed.data;
 
     // Check authentication
     const authResult = await checkAuth();
@@ -151,6 +156,8 @@ export async function POST(request: NextRequest) {
 
     // Save to database if user is authenticated and we have a topicId
     let submissionId: string | undefined;
+    let activeSessionId: string | undefined = sessionId;
+
     if (authResult.authenticated && topicId) {
       // Get attempt number (count previous submissions for this topic)
       const previousAttempts = await prisma.submission.count({
@@ -228,10 +235,60 @@ export async function POST(request: NextRequest) {
           data: { lastActiveAt: new Date() },
         });
       }
+
+      // Add messages to chat session for memory system
+      if (!activeSessionId) {
+        // Get or create a session for this topic
+        try {
+          const session = await getOrCreateSessionForTopic(
+            authResult.user.id,
+            topicId,
+            speaker?.id
+          );
+          activeSessionId = session.id;
+        } catch (err) {
+          console.error('Failed to create session:', err);
+        }
+      }
+
+      if (activeSessionId) {
+        try {
+          // Add user message
+          await addMessage({
+            sessionId: activeSessionId,
+            role: 'user',
+            content: userResponse,
+            contentType: 'text',
+            metadata: {
+              inputMethod,
+            },
+          });
+
+          // Add assistant evaluation message (summarized)
+          const evaluationSummary = evaluation.type === 'translation'
+            ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
+            : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
+
+          await addMessage({
+            sessionId: activeSessionId,
+            role: 'assistant',
+            content: evaluationSummary,
+            contentType: 'evaluation',
+            metadata: {
+              overallScore,
+              estimatedCefr: evaluation.overallCefrEstimate,
+              evaluationType: topicType,
+            },
+          });
+        } catch (err) {
+          console.error('Failed to add messages to session:', err);
+        }
+      }
     }
 
     return NextResponse.json<ApiResponse<{
       id?: string;
+      sessionId?: string;
       evaluation: typeof evaluation;
       overallScore: number;
       inputMethod: string;
@@ -239,6 +296,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         id: submissionId,
+        sessionId: activeSessionId,
         evaluation,
         overallScore,
         inputMethod,
