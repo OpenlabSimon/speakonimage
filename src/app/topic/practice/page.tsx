@@ -8,7 +8,16 @@ import { GrammarPanel } from '@/components/topic/GrammarCard';
 import { VoiceRecorder } from '@/components/input/VoiceRecorder';
 import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
-import type { TopicContent, VocabularyItem, GrammarHint, TranslationEvaluationScores, ExpressionEvaluationScores } from '@/types';
+import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
+import { useLevelHistory, levelToScore, type JumpDetection } from '@/hooks/useLevelHistory';
+import type {
+  TopicContent,
+  VocabularyItem,
+  GrammarHint,
+  TranslationEvaluationScores,
+  ExpressionEvaluationScores,
+  CEFRLevel,
+} from '@/types';
 
 interface TopicData {
   type: 'translation' | 'expression';
@@ -43,13 +52,20 @@ interface AttemptData {
 
 export default function TopicPracticePage() {
   const router = useRouter();
+  const { addScore, setLevel, getCurrentLevel } = useLevelHistory();
+
   const [topicData, setTopicData] = useState<TopicData | null>(null);
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
   const [userResponse, setUserResponse] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [currentEvaluation, setCurrentEvaluation] = useState<EvaluationData | null>(null);
+  const [currentEvaluation, setCurrentEvaluation] =
+    useState<EvaluationData | null>(null);
   const [attempts, setAttempts] = useState<AttemptData[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Level change modal state
+  const [showLevelModal, setShowLevelModal] = useState(false);
+  const [pendingJump, setPendingJump] = useState<JumpDetection | null>(null);
 
   // Load topic data from sessionStorage
   useEffect(() => {
@@ -76,6 +92,47 @@ export default function TopicPracticePage() {
     setAttempts(newAttempts);
   }, []);
 
+  // Update level history and check for jumps
+  const updateLevelHistory = useCallback(
+    (score: number, estimatedLevel: CEFRLevel) => {
+      const jumpResult = addScore(score, estimatedLevel);
+
+      if (jumpResult.detected) {
+        setPendingJump(jumpResult);
+        setShowLevelModal(true);
+      }
+    },
+    [addScore]
+  );
+
+  // Handle modal accept (use suggested level)
+  const handleLevelAccept = useCallback(() => {
+    if (pendingJump) {
+      setLevel(pendingJump.toLevel);
+    }
+    setShowLevelModal(false);
+    setPendingJump(null);
+  }, [pendingJump, setLevel]);
+
+  // Handle modal decline (keep current level)
+  const handleLevelDecline = useCallback(() => {
+    if (pendingJump) {
+      setLevel(pendingJump.fromLevel);
+    }
+    setShowLevelModal(false);
+    setPendingJump(null);
+  }, [pendingJump, setLevel]);
+
+  // Handle manual level selection
+  const handleManualLevelSelect = useCallback(
+    (level: CEFRLevel) => {
+      setLevel(level);
+      setShowLevelModal(false);
+      setPendingJump(null);
+    },
+    [setLevel]
+  );
+
   // Convert TopicData to TopicContent for the ChinesePromptCard
   const getTopicContent = (): TopicContent | null => {
     if (!topicData) return null;
@@ -84,7 +141,8 @@ export default function TopicPracticePage() {
       return {
         type: 'translation',
         chinesePrompt: topicData.chinesePrompt,
-        difficulty: (topicData.difficulty || topicData.difficultyMetadata.targetCefr) as 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2',
+        difficulty: (topicData.difficulty ||
+          topicData.difficultyMetadata.targetCefr) as CEFRLevel,
         keyPoints: topicData.keyPoints || [],
         suggestedVocab: topicData.suggestedVocab,
       };
@@ -110,7 +168,10 @@ export default function TopicPracticePage() {
 
     if (result.evaluation && result.overallScore !== undefined) {
       const evalData: EvaluationData = {
-        evaluation: result.evaluation as TranslationEvaluationScores | ExpressionEvaluationScores,
+        evaluation:
+          result.evaluation as
+            | TranslationEvaluationScores
+            | ExpressionEvaluationScores,
         overallScore: result.overallScore,
         inputMethod: 'voice',
         audioUrl: result.audioUrl,
@@ -129,6 +190,10 @@ export default function TopicPracticePage() {
       const newAttempts = [...attempts, newAttempt];
       saveAttempts(newAttempts);
       setCurrentEvaluation(evalData);
+
+      // Update level history with the score
+      const estimatedLevel = evalData.evaluation.overallCefrEstimate;
+      updateLevelHistory(result.overallScore, estimatedLevel);
     }
   };
 
@@ -155,7 +220,7 @@ export default function TopicPracticePage() {
           },
           userResponse: text,
           inputMethod: 'text',
-          historyAttempts: attempts.map(a => ({
+          historyAttempts: attempts.map((a) => ({
             text: a.text,
             score: a.overallScore,
           })),
@@ -180,6 +245,10 @@ export default function TopicPracticePage() {
       const newAttempts = [...attempts, newAttempt];
       saveAttempts(newAttempts);
       setCurrentEvaluation(result.data);
+
+      // Update level history with the score
+      const estimatedLevel = result.data.evaluation.overallCefrEstimate;
+      updateLevelHistory(result.data.overallScore, estimatedLevel);
     } catch (err) {
       console.error('Evaluation error:', err);
       setError(err instanceof Error ? err.message : 'Evaluation failed');
@@ -214,7 +283,7 @@ export default function TopicPracticePage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">⏳</div>
+          <div className="animate-spin text-4xl mb-4">...</div>
           <div className="text-gray-600">Loading topic...</div>
         </div>
       </div>
@@ -232,22 +301,29 @@ export default function TopicPracticePage() {
               onClick={() => router.push('/')}
               className="text-gray-600 hover:text-gray-800"
             >
-              ← Home
+              &larr; Home
             </button>
-            <div className="text-sm text-gray-500">
-              Attempt #{attempts.length}
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-500">
+                Attempt #{attempts.length}
+              </div>
+              <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
+                Level: {getCurrentLevel()}
+              </div>
             </div>
           </div>
 
           {/* Play Recording Button */}
           {currentEvaluation.audioUrl && (
             <div className="mb-4 p-3 bg-blue-50 rounded-xl flex items-center justify-between">
-              <span className="text-sm text-blue-700">Your recording is saved</span>
+              <span className="text-sm text-blue-700">
+                Your recording is saved
+              </span>
               <button
                 onClick={() => playRecording(currentEvaluation.audioUrl!)}
                 className="px-3 py-1 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600"
               >
-                🔊 Play Recording
+                Play Recording
               </button>
             </div>
           )}
@@ -257,7 +333,7 @@ export default function TopicPracticePage() {
             evaluation={currentEvaluation.evaluation}
             overallScore={currentEvaluation.overallScore}
             userResponse={userResponse}
-            attempts={attempts.map(a => ({
+            attempts={attempts.map((a) => ({
               attemptNumber: a.attemptNumber,
               text: a.text,
               overallScore: a.overallScore,
@@ -269,39 +345,62 @@ export default function TopicPracticePage() {
           />
 
           {/* Previous Recordings */}
-          {attempts.filter(a => a.audioUrl).length > 1 && (
+          {attempts.filter((a) => a.audioUrl).length > 1 && (
             <div className="mt-6 bg-white rounded-xl p-4 shadow">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Previous Recordings</h3>
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Previous Recordings
+              </h3>
               <div className="space-y-2">
-                {attempts.filter(a => a.audioUrl).map((attempt) => (
-                  <div
-                    key={attempt.attemptNumber}
-                    className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
-                      {attempt.attemptNumber}
-                    </div>
-                    <div className="flex-1 text-sm text-gray-600 truncate">
-                      {attempt.text.substring(0, 30)}...
-                    </div>
-                    <div className={`font-medium mr-2 ${
-                      attempt.overallScore >= 80 ? 'text-green-600' :
-                      attempt.overallScore >= 60 ? 'text-yellow-600' : 'text-red-600'
-                    }`}>
-                      {attempt.overallScore}
-                    </div>
-                    <button
-                      onClick={() => playRecording(attempt.audioUrl!)}
-                      className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
+                {attempts
+                  .filter((a) => a.audioUrl)
+                  .map((attempt) => (
+                    <div
+                      key={attempt.attemptNumber}
+                      className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg"
                     >
-                      🔊 Play
-                    </button>
-                  </div>
-                ))}
+                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium">
+                        {attempt.attemptNumber}
+                      </div>
+                      <div className="flex-1 text-sm text-gray-600 truncate">
+                        {attempt.text.substring(0, 30)}...
+                      </div>
+                      <div
+                        className={`font-medium mr-2 ${
+                          attempt.overallScore >= 80
+                            ? 'text-green-600'
+                            : attempt.overallScore >= 60
+                            ? 'text-yellow-600'
+                            : 'text-red-600'
+                        }`}
+                      >
+                        {attempt.overallScore}
+                      </div>
+                      <button
+                        onClick={() => playRecording(attempt.audioUrl!)}
+                        className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
+                      >
+                        Play
+                      </button>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
         </div>
+
+        {/* Level Change Modal */}
+        {pendingJump && (
+          <LevelChangeModal
+            isOpen={showLevelModal}
+            direction={pendingJump.direction!}
+            fromLevel={pendingJump.fromLevel}
+            toLevel={pendingJump.toLevel}
+            scoreDifference={pendingJump.scoreDifference}
+            onAccept={handleLevelAccept}
+            onDecline={handleLevelDecline}
+            onManualSelect={handleManualLevelSelect}
+          />
+        )}
       </div>
     );
   }
@@ -315,13 +414,19 @@ export default function TopicPracticePage() {
             onClick={() => router.push('/')}
             className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
           >
-            ← Back to Home
+            &larr; Back to Home
           </button>
-          {attempts.length > 0 && (
-            <div className="text-sm text-gray-500">
-              {attempts.length} previous {attempts.length === 1 ? 'attempt' : 'attempts'}
+          <div className="flex items-center gap-4">
+            {attempts.length > 0 && (
+              <div className="text-sm text-gray-500">
+                {attempts.length} previous{' '}
+                {attempts.length === 1 ? 'attempt' : 'attempts'}
+              </div>
+            )}
+            <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
+              Level: {getCurrentLevel()}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Chinese Prompt */}
@@ -335,11 +440,13 @@ export default function TopicPracticePage() {
         </div>
 
         {/* Grammar Panel (only for expression mode) */}
-        {topicData.type === 'expression' && topicData.grammarHints && topicData.grammarHints.length > 0 && (
-          <div className="mb-6">
-            <GrammarPanel grammarHints={topicData.grammarHints} />
-          </div>
-        )}
+        {topicData.type === 'expression' &&
+          topicData.grammarHints &&
+          topicData.grammarHints.length > 0 && (
+            <div className="mb-6">
+              <GrammarPanel grammarHints={topicData.grammarHints} />
+            </div>
+          )}
 
         {/* Error Display */}
         {error && (
@@ -369,7 +476,7 @@ export default function TopicPracticePage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              🎤 Voice
+              Voice
             </button>
             <button
               onClick={() => setInputMode('text')}
@@ -379,7 +486,7 @@ export default function TopicPracticePage() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              ⌨️ Text
+              Text
             </button>
           </div>
 
@@ -402,7 +509,7 @@ export default function TopicPracticePage() {
               />
               {isEvaluating && (
                 <div className="text-center text-sm text-gray-600">
-                  <span className="animate-spin inline-block mr-2">⏳</span>
+                  <span className="animate-spin inline-block mr-2">...</span>
                   Evaluating your response...
                 </div>
               )}
@@ -413,7 +520,9 @@ export default function TopicPracticePage() {
         {/* Previous Attempts Summary */}
         {attempts.length > 0 && (
           <div className="mt-6 bg-white rounded-xl p-4 shadow">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Previous Attempts</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">
+              Previous Attempts
+            </h3>
             <div className="space-y-2">
               {attempts.slice(-3).map((attempt) => (
                 <div
@@ -426,10 +535,15 @@ export default function TopicPracticePage() {
                   <div className="flex-1 text-sm text-gray-600 truncate">
                     {attempt.text.substring(0, 30)}...
                   </div>
-                  <div className={`font-medium ${
-                    attempt.overallScore >= 80 ? 'text-green-600' :
-                    attempt.overallScore >= 60 ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
+                  <div
+                    className={`font-medium ${
+                      attempt.overallScore >= 80
+                        ? 'text-green-600'
+                        : attempt.overallScore >= 60
+                        ? 'text-yellow-600'
+                        : 'text-red-600'
+                    }`}
+                  >
                     {attempt.overallScore}
                   </div>
                   {attempt.audioUrl && (
@@ -437,7 +551,7 @@ export default function TopicPracticePage() {
                       onClick={() => playRecording(attempt.audioUrl!)}
                       className="px-2 py-1 bg-blue-100 text-blue-600 text-xs rounded hover:bg-blue-200"
                     >
-                      🔊
+                      Play
                     </button>
                   )}
                 </div>
@@ -449,13 +563,27 @@ export default function TopicPracticePage() {
         {/* Tips */}
         <div className="mt-6 p-4 bg-blue-50 rounded-xl">
           <div className="text-sm text-blue-800">
-            <strong>💡 Tip:</strong>{' '}
+            <strong>Tip:</strong>{' '}
             {topicData.type === 'translation'
               ? "Express the meaning naturally - multiple correct answers are accepted! Focus on conveying the same idea, not word-for-word translation."
               : "Be creative! Use the suggested vocabulary and grammar patterns to enrich your expression. There's no single correct answer."}
           </div>
         </div>
       </div>
+
+      {/* Level Change Modal */}
+      {pendingJump && (
+        <LevelChangeModal
+          isOpen={showLevelModal}
+          direction={pendingJump.direction!}
+          fromLevel={pendingJump.fromLevel}
+          toLevel={pendingJump.toLevel}
+          scoreDifference={pendingJump.scoreDifference}
+          onAccept={handleLevelAccept}
+          onDecline={handleLevelDecline}
+          onManualSelect={handleManualLevelSelect}
+        />
+      )}
     </div>
   );
 }

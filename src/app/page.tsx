@@ -1,21 +1,69 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserMenu } from '@/components/ui/UserMenu';
-import type { TopicType } from '@/types';
+import { IntroductionInput } from '@/components/assessment/IntroductionInput';
+import { useLevelHistory } from '@/hooks/useLevelHistory';
+import type { TopicType, CEFRLevel } from '@/types';
+
+type PageStep = 'assessment' | 'topic-input';
 
 export default function Home() {
   const router = useRouter();
+  const {
+    history,
+    isLoaded,
+    needsAssessment,
+    initializeLevel,
+    getCurrentLevel,
+  } = useLevelHistory();
+
+  const [step, setStep] = useState<PageStep>('assessment');
   const [topicType, setTopicType] = useState<TopicType>('translation');
   const [inputText, setInputText] = useState('');
-  const [targetCefr, setTargetCefr] = useState('B1');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showManualLevelSelect, setShowManualLevelSelect] = useState(false);
+  const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
 
+  // Determine initial step based on level history
+  useEffect(() => {
+    if (isLoaded) {
+      if (needsAssessment()) {
+        setStep('assessment');
+      } else {
+        setStep('topic-input');
+      }
+    }
+  }, [isLoaded, needsAssessment]);
+
+  // Handle assessment completion
+  const handleAssessmentComplete = (
+    level: CEFRLevel,
+    confidence: number,
+    introductionText: string
+  ) => {
+    initializeLevel(level, confidence, introductionText);
+    setStep('topic-input');
+  };
+
+  // Handle skip assessment (manual level selection)
+  const handleSkipAssessment = () => {
+    setShowManualLevelSelect(true);
+  };
+
+  // Handle manual level selection confirm
+  const handleManualLevelConfirm = () => {
+    initializeLevel(manualLevel, 0.5); // 0.5 confidence for manual selection
+    setShowManualLevelSelect(false);
+    setStep('topic-input');
+  };
+
+  // Handle generate topic
   const handleGenerate = async () => {
     if (!inputText.trim()) {
-      setError('请输入话题关键词');
+      setError('Please enter a topic');
       return;
     }
 
@@ -23,6 +71,8 @@ export default function Home() {
     setError(null);
 
     try {
+      const targetCefr = getCurrentLevel();
+
       const response = await fetch('/api/topics/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,7 +89,7 @@ export default function Home() {
         throw new Error(result.error || 'Failed to generate topic');
       }
 
-      // Store topic data in sessionStorage for now (will use DB later)
+      // Store topic data in sessionStorage
       sessionStorage.setItem('currentTopic', JSON.stringify(result.data));
 
       // Navigate to topic page
@@ -52,145 +102,237 @@ export default function Home() {
     }
   };
 
+  // Show loading state while checking level history
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">...</div>
+          <div className="text-gray-600">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       {/* Top Navigation */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-gray-900">SpeakOnImage</h1>
-          <UserMenu />
+          <div className="flex items-center gap-4">
+            {history && step === 'topic-input' && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-500">Level:</span>
+                <span className="font-semibold text-blue-600">
+                  {history.currentLevel}
+                </span>
+                <button
+                  onClick={() => setStep('assessment')}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline"
+                >
+                  reassess
+                </button>
+              </div>
+            )}
+            <UserMenu />
+          </div>
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <p className="text-gray-600">看中文，说英语 — 提升你的英语表达能力</p>
+          <p className="text-gray-600">
+            Practice expressing Chinese thoughts in English
+          </p>
         </div>
 
-        {/* Topic Type Selection */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">选择练习模式</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setTopicType('translation')}
-              className={`p-4 rounded-xl border-2 transition-all text-left ${
-                topicType === 'translation'
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="text-2xl mb-2">📝</div>
-              <div className="font-medium text-gray-800">翻译挑战</div>
-              <div className="text-sm text-gray-500 mt-1">
-                看中文，用英语表达相同意思
-              </div>
-            </button>
-            <button
-              onClick={() => setTopicType('expression')}
-              className={`p-4 rounded-xl border-2 transition-all text-left ${
-                topicType === 'expression'
-                  ? 'border-emerald-500 bg-emerald-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="text-2xl mb-2">💬</div>
-              <div className="font-medium text-gray-800">话题表达</div>
-              <div className="text-sm text-gray-500 mt-1">
-                围绕话题自由发挥，创意表达
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {/* Input Section */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">
-            {topicType === 'translation' ? '输入话题关键词' : '输入你想聊的话题'}
-          </h2>
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder={
-              topicType === 'translation'
-                ? '例如：去咖啡店、周末计划、旅行经历...'
-                : '例如：我的理想工作、科技对生活的影响...'
-            }
-            className="w-full h-24 px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        {/* Step 1: Assessment */}
+        {step === 'assessment' && !showManualLevelSelect && (
+          <IntroductionInput
+            onAssessmentComplete={handleAssessmentComplete}
+            onSkip={handleSkipAssessment}
           />
+        )}
 
-          {/* CEFR Level Selection */}
-          <div className="mt-4 flex items-center gap-4">
-            <span className="text-sm text-gray-600">难度等级：</span>
-            <div className="flex gap-2">
-              {['A2', 'B1', 'B2', 'C1'].map((level) => (
+        {/* Manual Level Selection Modal */}
+        {showManualLevelSelect && (
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4 text-center">
+              Choose Your Level
+            </h2>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {(['A2', 'B1', 'B2', 'C1'] as CEFRLevel[]).map((level) => (
                 <button
                   key={level}
-                  onClick={() => setTargetCefr(level)}
-                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                    targetCefr === level
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  onClick={() => setManualLevel(level)}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    manualLevel === level
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  {level}
+                  <div className="font-bold text-lg">{level}</div>
+                  <div className="text-xs text-gray-500">
+                    {level === 'A2' && 'Elementary'}
+                    {level === 'B1' && 'Intermediate'}
+                    {level === 'B2' && 'Upper Intermediate'}
+                    {level === 'C1' && 'Advanced'}
+                  </div>
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-            {error}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowManualLevelSelect(false)}
+                className="flex-1 py-3 rounded-xl font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleManualLevelConfirm}
+                className="flex-1 py-3 rounded-xl font-semibold bg-blue-500 text-white hover:bg-blue-600"
+              >
+                Start with {manualLevel}
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Generate Button */}
-        <button
-          onClick={handleGenerate}
-          disabled={isGenerating || !inputText.trim()}
-          className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${
-            isGenerating || !inputText.trim()
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : topicType === 'translation'
-              ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
-              : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg hover:shadow-xl'
-          }`}
-        >
-          {isGenerating ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin">⏳</span>
-              生成中...
-            </span>
-          ) : (
-            '生成练习题'
-          )}
-        </button>
+        {/* Step 2: Topic Input (no level selection) */}
+        {step === 'topic-input' && (
+          <>
+            {/* Topic Type Selection */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">
+                Select Practice Mode
+              </h2>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setTopicType('translation')}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    topicType === 'translation'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">Translation</div>
+                  <div className="font-medium text-gray-800">
+                    Translation Challenge
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">
+                    Read Chinese, express the same meaning in English
+                  </div>
+                </button>
+                <button
+                  onClick={() => setTopicType('expression')}
+                  className={`p-4 rounded-xl border-2 transition-all text-left ${
+                    topicType === 'expression'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">Expression</div>
+                  <div className="font-medium text-gray-800">
+                    Topic Expression
+                  </div>
+                  <div className="text-sm text-gray-500 mt-1">
+                    Express your thoughts freely on a topic
+                  </div>
+                </button>
+              </div>
+            </div>
 
-        {/* Quick Start Examples */}
-        <div className="mt-8">
-          <h3 className="text-sm font-medium text-gray-500 mb-3 text-center">快速开始</h3>
-          <div className="flex flex-wrap justify-center gap-2">
-            {[
-              '咖啡店',
-              '周末计划',
-              '旅行经历',
-              '美食推荐',
-              '工作面试',
-              '学习英语',
-            ].map((example) => (
-              <button
-                key={example}
-                onClick={() => setInputText(example)}
-                className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
-              >
-                {example}
-              </button>
-            ))}
-          </div>
-        </div>
+            {/* Input Section */}
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">
+                {topicType === 'translation'
+                  ? 'Enter Topic Keywords'
+                  : 'Enter Your Topic'}
+              </h2>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={
+                  topicType === 'translation'
+                    ? 'E.g.: coffee shop, weekend plans, travel experience...'
+                    : 'E.g.: my ideal job, technology in daily life...'
+                }
+                className="w-full h-24 px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+
+              {/* Current Level Display */}
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">
+                    Practice level:
+                  </span>
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
+                    {getCurrentLevel()}
+                  </span>
+                </div>
+                <span className="text-xs text-gray-400">
+                  Level adjusts based on your performance
+                </span>
+              </div>
+            </div>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                {error}
+              </div>
+            )}
+
+            {/* Generate Button */}
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !inputText.trim()}
+              className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${
+                isGenerating || !inputText.trim()
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : topicType === 'translation'
+                  ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
+                  : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg hover:shadow-xl'
+              }`}
+            >
+              {isGenerating ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="animate-spin">...</span>
+                  Generating...
+                </span>
+              ) : (
+                'Generate Practice'
+              )}
+            </button>
+
+            {/* Quick Start Examples */}
+            <div className="mt-8">
+              <h3 className="text-sm font-medium text-gray-500 mb-3 text-center">
+                Quick Start
+              </h3>
+              <div className="flex flex-wrap justify-center gap-2">
+                {[
+                  'coffee shop',
+                  'weekend plans',
+                  'travel',
+                  'food',
+                  'job interview',
+                  'learning English',
+                ].map((example) => (
+                  <button
+                    key={example}
+                    onClick={() => setInputText(example)}
+                    className="px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
