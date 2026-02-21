@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import { getLLMProvider } from '@/lib/llm';
 import {
   TranslationTopicSchema,
@@ -16,7 +17,6 @@ const RequestSchema = z.object({
   text: z.string().min(1).max(2000).describe('Topic keywords or content to generate from'),
   type: z.enum(['translation', 'expression']).default('translation'),
   targetCefr: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']).optional().default('B1'),
-  accountId: z.string().uuid().optional(), // Will be from auth later
 });
 
 export async function POST(request: NextRequest) {
@@ -31,7 +31,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { text, type, targetCefr, accountId } = parsed.data;
+    const { text, type, targetCefr } = parsed.data;
+
+    // Get authenticated user (optional - topics can be generated without auth)
+    const user = await getCurrentUser();
 
     // Get LLM provider
     const llm = getLLMProvider();
@@ -48,12 +51,12 @@ export async function POST(request: NextRequest) {
       topicData = await llm.generateJSON(prompt, ExpressionTopicSchema, systemPrompt);
     }
 
-    // If accountId provided, save to database
+    // If user is authenticated, save topic to database
     let topicId: string | undefined;
-    if (accountId) {
+    if (user?.id) {
       const topic = await prisma.topic.create({
         data: {
-          accountId,
+          accountId: user.id,
           type,
           originalInput: text,
           topicContent: topicData as object,

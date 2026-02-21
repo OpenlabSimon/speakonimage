@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import { getLLMProvider } from '@/lib/llm';
 import {
   TranslationEvaluationSchema,
@@ -11,10 +13,11 @@ import {
   EXPRESSION_EVALUATION_SYSTEM_PROMPT,
   buildExpressionEvaluationPrompt,
 } from '@/lib/llm/prompts/evaluate-expression';
-import type { ApiResponse, VocabularyItem, GrammarHint } from '@/types';
+import type { ApiResponse } from '@/types';
 
 // Request body schema
 const SubmissionRequestSchema = z.object({
+  topicId: z.string().uuid().optional(), // Topic ID from database
   topicType: z.enum(['translation', 'expression']),
   topicContent: z.object({
     chinesePrompt: z.string(),
@@ -54,7 +57,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { topicType, topicContent, userResponse, inputMethod, historyAttempts } = parsed.data;
+    const { topicId, topicType, topicContent, userResponse, inputMethod, historyAttempts } = parsed.data;
+
+    // Get authenticated user (optional)
+    const user = await getCurrentUser();
 
     // Get LLM provider
     const llm = getLLMProvider();
@@ -116,13 +122,96 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Save to database if user is authenticated and we have a topicId
+    let submissionId: string | undefined;
+    if (user?.id && topicId) {
+      // Get attempt number (count previous submissions for this topic)
+      const previousAttempts = await prisma.submission.count({
+        where: {
+          topicId,
+          accountId: user.id,
+        },
+      });
+
+      // Get default speaker for this user
+      const speaker = await prisma.speaker.findFirst({
+        where: { accountId: user.id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      // Create submission
+      const submission = await prisma.submission.create({
+        data: {
+          topicId,
+          accountId: user.id,
+          speakerId: speaker?.id,
+          attemptNumber: previousAttempts + 1,
+          inputMethod,
+          transcribedText: userResponse,
+          evaluation: evaluation as object,
+          difficultyAssessment: {
+            overallScore,
+            estimatedCefr: evaluation.overallCefrEstimate,
+          },
+        },
+      });
+
+      submissionId = submission.id;
+
+      // Extract and save grammar errors
+      const grammarErrors = evaluation.type === 'translation'
+        ? evaluation.grammar.errors
+        : evaluation.languageQuality.grammarErrors;
+
+      if (grammarErrors && grammarErrors.length > 0) {
+        await prisma.grammarError.createMany({
+          data: grammarErrors.map(error => ({
+            submissionId: submission.id,
+            speakerId: speaker?.id,
+            errorPattern: error.rule,
+            originalText: error.original,
+            correctedText: error.corrected,
+            severity: error.severity,
+          })),
+        });
+      }
+
+      // Extract and save vocabulary usage (words from suggested vocab that were used)
+      const usedVocabWords = topicContent.suggestedVocab.filter(vocab =>
+        userResponse.toLowerCase().includes(vocab.word.toLowerCase())
+      );
+
+      if (usedVocabWords.length > 0) {
+        await prisma.vocabularyUsage.createMany({
+          data: usedVocabWords.map(vocab => ({
+            submissionId: submission.id,
+            speakerId: speaker?.id,
+            word: vocab.word,
+            wasFromHint: true,
+            usedCorrectly: true, // Simplified - could be enhanced with LLM check
+            cefrLevel: evaluation.overallCefrEstimate,
+          })),
+        });
+      }
+
+      // Update speaker's last active time
+      if (speaker) {
+        await prisma.speaker.update({
+          where: { id: speaker.id },
+          data: { lastActiveAt: new Date() },
+        });
+      }
+    }
+
     return NextResponse.json<ApiResponse<{
+      id?: string;
       evaluation: typeof evaluation;
       overallScore: number;
       inputMethod: string;
     }>>({
       success: true,
       data: {
+        id: submissionId,
         evaluation,
         overallScore,
         inputMethod,

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import { prisma } from '@/lib/db';
+import { getCurrentUser } from '@/lib/auth';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
 import { getLLMProvider } from '@/lib/llm';
 import {
@@ -49,6 +51,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get topicId from form data (optional)
+    const topicId = formData.get('topicId') as string | null;
+
+    // Get authenticated user (optional)
+    const user = await getCurrentUser();
 
     // Get Azure credentials
     const speechKey = process.env.AZURE_SPEECH_KEY;
@@ -192,7 +200,91 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Step 4: Save to database if user is authenticated and we have a topicId
+    let submissionId: string | undefined;
+    if (user?.id && topicId) {
+      // Get attempt number (count previous submissions for this topic)
+      const previousAttempts = await prisma.submission.count({
+        where: {
+          topicId,
+          accountId: user.id,
+        },
+      });
+
+      // Get default speaker for this user
+      const speaker = await prisma.speaker.findFirst({
+        where: { accountId: user.id },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      // Create submission
+      const submission = await prisma.submission.create({
+        data: {
+          topicId,
+          accountId: user.id,
+          speakerId: speaker?.id,
+          attemptNumber: previousAttempts + 1,
+          inputMethod: 'voice',
+          rawAudioUrl: audioUrl,
+          transcribedText,
+          evaluation: evaluation as object,
+          difficultyAssessment: {
+            overallScore,
+            estimatedCefr: evaluation.overallCefrEstimate,
+          },
+        },
+      });
+
+      submissionId = submission.id;
+
+      // Extract and save grammar errors
+      const grammarErrors = evaluation.type === 'translation'
+        ? evaluation.grammar.errors
+        : evaluation.languageQuality.grammarErrors;
+
+      if (grammarErrors && grammarErrors.length > 0) {
+        await prisma.grammarError.createMany({
+          data: grammarErrors.map(error => ({
+            submissionId: submission.id,
+            speakerId: speaker?.id,
+            errorPattern: error.rule,
+            originalText: error.original,
+            correctedText: error.corrected,
+            severity: error.severity,
+          })),
+        });
+      }
+
+      // Extract and save vocabulary usage (words from suggested vocab that were used)
+      const suggestedVocab = topicData.suggestedVocab || [];
+      const usedVocabWords = suggestedVocab.filter((vocab: { word: string }) =>
+        transcribedText.toLowerCase().includes(vocab.word.toLowerCase())
+      );
+
+      if (usedVocabWords.length > 0) {
+        await prisma.vocabularyUsage.createMany({
+          data: usedVocabWords.map((vocab: { word: string }) => ({
+            submissionId: submission.id,
+            speakerId: speaker?.id,
+            word: vocab.word,
+            wasFromHint: true,
+            usedCorrectly: true,
+            cefrLevel: evaluation.overallCefrEstimate,
+          })),
+        });
+      }
+
+      // Update speaker's last active time
+      if (speaker) {
+        await prisma.speaker.update({
+          where: { id: speaker.id },
+          data: { lastActiveAt: new Date() },
+        });
+      }
+    }
+
     return NextResponse.json<ApiResponse<{
+      id?: string;
       transcription: string;
       confidence: number | undefined;
       duration: number | undefined;
@@ -203,6 +295,7 @@ export async function POST(request: NextRequest) {
     }>>({
       success: true,
       data: {
+        id: submissionId,
         transcription: transcribedText,
         confidence: transcriptionResult.confidence,
         duration: transcriptionResult.duration,

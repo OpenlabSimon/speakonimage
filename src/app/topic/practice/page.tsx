@@ -20,6 +20,7 @@ import type {
 } from '@/types';
 
 interface TopicData {
+  id?: string; // Database ID (if authenticated)
   type: 'translation' | 'expression';
   chinesePrompt: string;
   keyPoints?: string[];
@@ -210,6 +211,7 @@ export default function TopicPracticePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          topicId: topicData.id, // Pass topic ID for database persistence
           topicType: topicData.type,
           topicContent: {
             chinesePrompt: topicData.chinesePrompt,
@@ -495,6 +497,7 @@ export default function TopicPracticePage() {
             <VoiceRecorder
               onTranscriptionAndEvaluation={handleVoiceResult}
               topicData={topicData}
+              topicId={topicData.id}
               onError={(error) => setError(error)}
             />
           )}

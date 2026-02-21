@@ -12,6 +12,7 @@ interface VoiceRecorderProps {
     overallScore?: number;
   }) => void;
   topicData: unknown;
+  topicId?: string; // Database topic ID for persistence
   onError?: (error: string) => void;
   disabled?: boolean;
 }
@@ -19,6 +20,7 @@ interface VoiceRecorderProps {
 export function VoiceRecorder({
   onTranscriptionAndEvaluation,
   topicData,
+  topicId,
   onError,
   disabled,
 }: VoiceRecorderProps) {
@@ -88,6 +90,9 @@ export function VoiceRecorder({
       const formData = new FormData();
       formData.append('audio', audioToSend);
       formData.append('topicData', JSON.stringify(topicData));
+      if (topicId) {
+        formData.append('topicId', topicId);
+      }
 
       setProcessingStep('Transcribing & evaluating...');
 
