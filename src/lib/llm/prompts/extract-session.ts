@@ -2,33 +2,39 @@
 
 import { z } from 'zod';
 
+// Helper: coerce a single string to an array
+const stringOrArray = z.union([
+  z.array(z.string()),
+  z.string().transform((s) => s ? [s] : []),
+]).default([]);
+
 // Schema for extracted vocabulary
 const ExtractedVocabularySchema = z.object({
-  word: z.string().describe('The vocabulary word'),
-  context: z.string().describe('How the word was used in context'),
-  mastery: z.enum(['new', 'developing', 'mastered']).describe('Estimated mastery level'),
-  cefrLevel: z.string().optional().describe('Estimated CEFR level of the word'),
+  word: z.string(),
+  context: z.string().default(''),
+  mastery: z.string().default('new'),
+  cefrLevel: z.string().optional(),
 });
 
-// Schema for extracted error
+// Schema for extracted error - all fields optional with defaults for LLM resilience
 const ExtractedErrorSchema = z.object({
-  type: z.string().describe('Grammar category: tense, article, preposition, word_order, etc.'),
-  userSaid: z.string().describe('What the user said (with error)'),
-  correction: z.string().describe('The corrected version'),
-  pattern: z.string().describe('Generalized error pattern description'),
-  severity: z.enum(['low', 'medium', 'high']).describe('Error severity'),
-  isRecurring: z.boolean().describe('Whether this pattern appeared multiple times'),
+  type: z.string().default('unknown'),
+  userSaid: z.string().default(''),
+  correction: z.string().default(''),
+  pattern: z.string().default(''),
+  severity: z.string().default('medium'),
+  isRecurring: z.boolean().default(false),
 });
 
-// Full extraction result schema
+// Full extraction result schema with lenient defaults
 export const SessionExtractionSchema = z.object({
-  sessionSummary: z.string().describe('One-line summary of what happened in this session'),
-  newVocabulary: z.array(ExtractedVocabularySchema).describe('New vocabulary introduced or practiced'),
-  errors: z.array(ExtractedErrorSchema).describe('Errors made by the student'),
-  grammarPointsTouched: z.array(z.string()).describe('Grammar points practiced (e.g., past_tense, articles, conditionals)'),
-  topicsDiscussed: z.array(z.string()).describe('Topics/themes discussed (e.g., cooking, travel, work)'),
-  suggestedFocusNext: z.array(z.string()).describe('Suggested focus areas for next session'),
-  overallProgress: z.enum(['improving', 'stable', 'struggling']).describe('Overall progress assessment'),
+  sessionSummary: z.string().default(''),
+  newVocabulary: z.array(ExtractedVocabularySchema).default([]),
+  errors: z.array(ExtractedErrorSchema).default([]),
+  grammarPointsTouched: stringOrArray,
+  topicsDiscussed: stringOrArray,
+  suggestedFocusNext: stringOrArray,
+  overallProgress: z.string().default('stable'),
 });
 
 export type SessionExtractionResult = z.infer<typeof SessionExtractionSchema>;
@@ -44,6 +50,7 @@ export const SESSION_EXTRACTION_SYSTEM_PROMPT = `你是一个英语学习分析�
    - developing: 能使用但有错误
    - mastered: 使用准确自然
 4. 建议下次重点要具体可行
+5. 所有数组字段必须返回数组，不要返回单个字符串
 
 请用JSON格式输出，严格遵循schema。`;
 
@@ -71,16 +78,18 @@ ${topicInfo}
 ${formattedMessages}
 
 ## 提取要求
-请从对话中提取：
-1. sessionSummary: 一句话总结本次练习
-2. newVocabulary: 学生接触到的词汇（最多10个重点词汇）
-3. errors: 学生犯的错误（概括相似错误，标注是否反复出现）
-4. grammarPointsTouched: 涉及的语法点（如: past_tense, articles, prepositions）
-5. topicsDiscussed: 讨论的话题领域
-6. suggestedFocusNext: 下次练习建议关注的点
-7. overallProgress: 整体评估（improving/stable/struggling）
+请从对话中提取以下JSON结构：
+{
+  "sessionSummary": "一句话总结本次练习",
+  "newVocabulary": [{"word": "词汇", "context": "使用语境", "mastery": "new/developing/mastered", "cefrLevel": "A1-C2"}],
+  "errors": [{"type": "错误类型", "userSaid": "学生原话", "correction": "正确表达", "pattern": "错误模式", "severity": "low/medium/high", "isRecurring": false}],
+  "grammarPointsTouched": ["past_tense", "articles"],
+  "topicsDiscussed": ["cooking", "family"],
+  "suggestedFocusNext": ["建议1", "建议2"],
+  "overallProgress": "improving/stable/struggling"
+}
 
-请输出JSON格式的分析结果。`;
+注意：所有数组字段必须是数组格式，即使只有一项也要用 ["item"] 格式。`;
 
   return prompt;
 }

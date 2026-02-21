@@ -61,20 +61,23 @@ export async function extractSessionLearningData(
       SESSION_EXTRACTION_SYSTEM_PROMPT
     );
 
-    // Map result to typed extraction, handling flexible cefrLevel
+    // Map result to typed extraction, casting flexible LLM strings to strict types
     const typedResult: TypedExtractionResult = {
       sessionSummary: result.sessionSummary,
       newVocabulary: result.newVocabulary.map((v) => ({
         word: v.word,
         context: v.context,
-        mastery: v.mastery,
+        mastery: (v.mastery || 'new') as 'new' | 'developing' | 'mastered',
         cefrLevel: v.cefrLevel as TypedExtractionResult['newVocabulary'][0]['cefrLevel'],
       })),
-      errors: result.errors,
+      errors: result.errors.map((e) => ({
+        ...e,
+        severity: (e.severity || 'medium') as 'low' | 'medium' | 'high',
+      })),
       grammarPointsTouched: result.grammarPointsTouched,
       topicsDiscussed: result.topicsDiscussed,
       suggestedFocusNext: result.suggestedFocusNext,
-      overallProgress: result.overallProgress,
+      overallProgress: (result.overallProgress || 'stable') as 'improving' | 'stable' | 'struggling',
       extractedAt: new Date(),
     };
 
