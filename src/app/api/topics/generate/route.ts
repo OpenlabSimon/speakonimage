@@ -6,8 +6,11 @@ import { getLLMProvider } from '@/lib/llm';
 import {
   TranslationTopicSchema,
   ExpressionTopicSchema,
+  TopicGenerationSchema,
   buildTopicPrompt,
   getSystemPromptForType,
+  buildUnifiedPrompt,
+  UNIFIED_SYSTEM_PROMPT,
   type TopicGenerationOutput,
 } from '@/lib/llm/prompts/topic-generate';
 import type { ApiResponse } from '@/types';
@@ -15,7 +18,7 @@ import type { ApiResponse } from '@/types';
 // Request body schema
 const RequestSchema = z.object({
   text: z.string().min(1).max(2000).describe('Topic keywords or content to generate from'),
-  type: z.enum(['translation', 'expression']).default('translation'),
+  type: z.enum(['translation', 'expression']).optional(),
   targetCefr: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']).optional().default('B1'),
 });
 
@@ -40,15 +43,21 @@ export async function POST(request: NextRequest) {
     const llm = getLLMProvider();
 
     // Build prompt and get schema based on topic type
-    const prompt = buildTopicPrompt(type, text, targetCefr);
-    const systemPrompt = getSystemPromptForType(type);
-
-    // Use the appropriate schema based on type
     let topicData: TopicGenerationOutput;
-    if (type === 'translation') {
-      topicData = await llm.generateJSON(prompt, TranslationTopicSchema, systemPrompt);
+
+    if (type) {
+      // Explicit type: use type-specific prompt and schema
+      const prompt = buildTopicPrompt(type, text, targetCefr);
+      const systemPrompt = getSystemPromptForType(type);
+      if (type === 'translation') {
+        topicData = await llm.generateJSON(prompt, TranslationTopicSchema, systemPrompt);
+      } else {
+        topicData = await llm.generateJSON(prompt, ExpressionTopicSchema, systemPrompt);
+      }
     } else {
-      topicData = await llm.generateJSON(prompt, ExpressionTopicSchema, systemPrompt);
+      // No type: unified prompt, LLM auto-detects type
+      const prompt = buildUnifiedPrompt(text, targetCefr);
+      topicData = await llm.generateJSON(prompt, TopicGenerationSchema, UNIFIED_SYSTEM_PROMPT);
     }
 
     // If user is authenticated, save topic to database
@@ -57,7 +66,7 @@ export async function POST(request: NextRequest) {
       const topic = await prisma.topic.create({
         data: {
           accountId: user.id,
-          type,
+          type: topicData.type,
           originalInput: text,
           topicContent: topicData as object,
           difficultyMetadata: topicData.difficultyMetadata,

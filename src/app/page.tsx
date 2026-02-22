@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserMenu } from '@/components/ui/UserMenu';
 import { IntroductionInput } from '@/components/assessment/IntroductionInput';
 import { useLevelHistory } from '@/hooks/useLevelHistory';
-import type { TopicType, CEFRLevel } from '@/types';
+import type { CEFRLevel } from '@/types';
 
 type PageStep = 'assessment' | 'post-assessment' | 'topic-input';
 
@@ -16,11 +16,11 @@ export default function Home() {
     isLoaded,
     needsAssessment,
     initializeLevel,
+    upgradeLevel,
     getCurrentLevel,
   } = useLevelHistory();
 
   const [step, setStep] = useState<PageStep>('assessment');
-  const [topicType, setTopicType] = useState<TopicType>('translation');
   const [inputText, setInputText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +105,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: inputText.trim(),
-          type: topicType,
           targetCefr,
         }),
       });
@@ -154,6 +153,14 @@ export default function Home() {
                 <span className="font-semibold text-blue-600">
                   {history.currentLevel}
                 </span>
+                {history.currentLevel !== 'C2' && (
+                  <button
+                    onClick={upgradeLevel}
+                    className="text-xs text-green-600 hover:text-green-800 font-medium"
+                  >
+                    升级
+                  </button>
+                )}
                 <button
                   onClick={() => setStep('assessment')}
                   className="text-xs text-gray-400 hover:text-gray-600 underline"
@@ -256,7 +263,7 @@ export default function Home() {
                   开始新话题练习
                 </div>
                 <div className="text-sm text-blue-600">
-                  选择新的话题进行翻译挑战或话题表达练习
+                  输入一句中文、一个话题或学习目标，开始练习
                 </div>
               </button>
             </div>
@@ -266,62 +273,15 @@ export default function Home() {
         {/* Step 2: Topic Input (no level selection) */}
         {step === 'topic-input' && (
           <>
-            {/* Topic Type Selection */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                选择练习模式
-              </h2>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => setTopicType('translation')}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
-                    topicType === 'translation'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">翻译挑战</div>
-                  <div className="font-medium text-gray-800">
-                    中译英练习
-                  </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    看中文，用英语表达相同的意思
-                  </div>
-                </button>
-                <button
-                  onClick={() => setTopicType('expression')}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
-                    topicType === 'expression'
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">话题表达</div>
-                  <div className="font-medium text-gray-800">
-                    自由表达练习
-                  </div>
-                  <div className="text-sm text-gray-500 mt-1">
-                    围绕话题自由表达你的想法
-                  </div>
-                </button>
-              </div>
-            </div>
-
             {/* Input Section */}
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">
-                {topicType === 'translation'
-                  ? '输入话题关键词'
-                  : '输入你的话题'}
+                输入练习内容
               </h2>
               <textarea
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                placeholder={
-                  topicType === 'translation'
-                    ? '例如：咖啡店、周末计划、旅行经历...'
-                    : '例如：我的理想工作、日常生活中的科技...'
-                }
+                placeholder="输入任何内容：一句中文、一个话题、或学习目标..."
                 className="w-full h-24 px-4 py-3 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
 
@@ -336,7 +296,7 @@ export default function Home() {
                   </span>
                 </div>
                 <span className="text-xs text-gray-400">
-                  等级会根据你的表现自动调整
+                  连续低分会自动降级，升级需手动操作
                 </span>
               </div>
             </div>
@@ -355,9 +315,7 @@ export default function Home() {
               className={`w-full py-4 rounded-xl font-semibold text-lg transition-all ${
                 isGenerating || !inputText.trim()
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : topicType === 'translation'
-                  ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
-                  : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg hover:shadow-xl'
+                  : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
               }`}
             >
               {isGenerating ? (
@@ -377,12 +335,12 @@ export default function Home() {
               </h3>
               <div className="flex flex-wrap justify-center gap-2">
                 {[
-                  '咖啡店',
+                  '昨天我在咖啡店遇到了一个老朋友',
+                  '如果明天下雨，我们就改天再去',
                   '周末计划',
-                  '旅行',
-                  '美食',
-                  '求职面试',
-                  '学习英语',
+                  '旅行中的难忘经历',
+                  '我想练习雅思口语',
+                  '帮我练习商务英语',
                 ].map((example) => (
                   <button
                     key={example}

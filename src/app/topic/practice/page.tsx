@@ -11,7 +11,7 @@ import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
 import { CharacterSelector } from '@/components/evaluation/CharacterSelector';
 import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
-import { useLevelHistory, levelToScore, type JumpDetection } from '@/hooks/useLevelHistory';
+import { useLevelHistory, type LevelChangeResult } from '@/hooks/useLevelHistory';
 import { useConversation } from '@/hooks/useConversation';
 import { useCharacterSelection } from '@/hooks/useCharacterSelection';
 import type {
@@ -59,7 +59,7 @@ export default function TopicPracticePage() {
   const router = useRouter();
   const { data: authSession } = useSession();
   const isAuthenticated = !!authSession?.user;
-  const { addScore, setLevel, getCurrentLevel } = useLevelHistory();
+  const { addScore, upgradeLevel, setLevel, getCurrentLevel } = useLevelHistory();
   const { characterId, setCharacterId } = useCharacterSelection();
 
   const [topicData, setTopicData] = useState<TopicData | null>(null);
@@ -71,9 +71,9 @@ export default function TopicPracticePage() {
   const [attempts, setAttempts] = useState<AttemptData[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Level change modal state
+  // Level downgrade modal state
   const [showLevelModal, setShowLevelModal] = useState(false);
-  const [pendingJump, setPendingJump] = useState<JumpDetection | null>(null);
+  const [pendingDowngrade, setPendingDowngrade] = useState<LevelChangeResult | null>(null);
 
   // Conversation session for memory system
   const conversation = useConversation({
@@ -107,43 +107,40 @@ export default function TopicPracticePage() {
     setAttempts(newAttempts);
   }, []);
 
-  // Update level history and check for jumps
+  // Update level history — only auto-downgrades, never auto-upgrades
   const updateLevelHistory = useCallback(
     (score: number, estimatedLevel: CEFRLevel) => {
-      const jumpResult = addScore(score, estimatedLevel);
+      const result = addScore(score, estimatedLevel);
 
-      if (jumpResult.detected) {
-        setPendingJump(jumpResult);
+      if (result.downgraded) {
+        setPendingDowngrade(result);
         setShowLevelModal(true);
       }
     },
     [addScore]
   );
 
-  // Handle modal accept (use suggested level)
+  // Handle downgrade modal accept (accept the downgrade, already applied)
   const handleLevelAccept = useCallback(() => {
-    if (pendingJump) {
-      setLevel(pendingJump.toLevel);
-    }
     setShowLevelModal(false);
-    setPendingJump(null);
-  }, [pendingJump, setLevel]);
+    setPendingDowngrade(null);
+  }, []);
 
-  // Handle modal decline (keep current level)
+  // Handle downgrade modal decline (user wants to stay at original level)
   const handleLevelDecline = useCallback(() => {
-    if (pendingJump) {
-      setLevel(pendingJump.fromLevel);
+    if (pendingDowngrade) {
+      setLevel(pendingDowngrade.fromLevel);
     }
     setShowLevelModal(false);
-    setPendingJump(null);
-  }, [pendingJump, setLevel]);
+    setPendingDowngrade(null);
+  }, [pendingDowngrade, setLevel]);
 
-  // Handle manual level selection
+  // Handle manual level selection from modal
   const handleManualLevelSelect = useCallback(
     (level: CEFRLevel) => {
       setLevel(level);
       setShowLevelModal(false);
-      setPendingJump(null);
+      setPendingDowngrade(null);
     },
     [setLevel]
   );
@@ -325,8 +322,19 @@ export default function TopicPracticePage() {
               <div className="text-sm text-gray-500">
                 第 {attempts.length} 次尝试
               </div>
-              <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
-                等级: {getCurrentLevel()}
+              <div className="flex items-center gap-1">
+                <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
+                  等级: {getCurrentLevel()}
+                </div>
+                {getCurrentLevel() !== 'C2' && (
+                  <button
+                    onClick={upgradeLevel}
+                    className="px-2 py-1 text-xs text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                    title="升级难度"
+                  >
+                    升级
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -410,13 +418,12 @@ export default function TopicPracticePage() {
         </div>
 
         {/* Level Change Modal */}
-        {pendingJump && (
+        {pendingDowngrade && (
           <LevelChangeModal
             isOpen={showLevelModal}
-            direction={pendingJump.direction!}
-            fromLevel={pendingJump.fromLevel}
-            toLevel={pendingJump.toLevel}
-            scoreDifference={pendingJump.scoreDifference}
+            direction="down"
+            fromLevel={pendingDowngrade.fromLevel}
+            toLevel={pendingDowngrade.toLevel}
             onAccept={handleLevelAccept}
             onDecline={handleLevelDecline}
             onManualSelect={handleManualLevelSelect}
@@ -443,8 +450,19 @@ export default function TopicPracticePage() {
                 已尝试 {attempts.length} 次
               </div>
             )}
-            <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
-              等级: {getCurrentLevel()}
+            <div className="flex items-center gap-1">
+              <div className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-medium">
+                等级: {getCurrentLevel()}
+              </div>
+              {getCurrentLevel() !== 'C2' && (
+                <button
+                  onClick={upgradeLevel}
+                  className="px-2 py-1 text-xs text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                  title="升级难度"
+                >
+                  升级
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -523,6 +541,7 @@ export default function TopicPracticePage() {
               topicId={topicData.id}
               sessionId={conversation.session?.id}
               onError={(error) => setError(error)}
+              cefrLevel={getCurrentLevel()}
             />
           )}
 
@@ -599,13 +618,12 @@ export default function TopicPracticePage() {
       </div>
 
       {/* Level Change Modal */}
-      {pendingJump && (
+      {pendingDowngrade && (
         <LevelChangeModal
           isOpen={showLevelModal}
-          direction={pendingJump.direction!}
-          fromLevel={pendingJump.fromLevel}
-          toLevel={pendingJump.toLevel}
-          scoreDifference={pendingJump.scoreDifference}
+          direction="down"
+          fromLevel={pendingDowngrade.fromLevel}
+          toLevel={pendingDowngrade.toLevel}
           onAccept={handleLevelAccept}
           onDecline={handleLevelDecline}
           onManualSelect={handleManualLevelSelect}

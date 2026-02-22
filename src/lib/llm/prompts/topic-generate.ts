@@ -94,6 +94,70 @@ export const EXPRESSION_SYSTEM_PROMPT = `你是一位鼓励创意表达的英语
 请始终返回符合schema的有效JSON。`;
 
 // ============================================
+// Unified Prompt (auto-detect type from input)
+// ============================================
+
+export const UNIFIED_SYSTEM_PROMPT = `你是一位专业的英语教师，正在根据用户输入自动设计合适的练习题目。
+
+你需要分析用户输入的内容，判断适合哪种练习模式：
+
+1. **翻译挑战 (translation)**：当用户输入的是完整的中文句子或段落时
+   - 例如："昨天我在咖啡店遇到了一个老朋友"
+   - 例如："如果明天下雨，我们就改天再去"
+
+2. **话题表达 (expression)**：当用户输入的是话题关键词、学习目标、或非完整句子时
+   - 例如："周末计划"、"旅行经历"
+   - 例如："我想练习雅思口语"、"帮我练习商务英语"
+
+当无法明确判断时，默认使用话题表达 (expression) 模式。
+
+设计原则：
+- 内容难度要匹配目标CEFR等级
+- 词汇要实用，包含IPA音标
+- 翻译挑战重点是语义传达，不要求逐字翻译
+- 话题表达鼓励开放性、创意性表达
+
+请始终返回符合schema的有效JSON。type字段必须是 "translation" 或 "expression"。`;
+
+/**
+ * Build prompt for unified (auto-detect) mode
+ */
+export function buildUnifiedPrompt(
+  userInput: string,
+  targetCefr: string = 'B1'
+): string {
+  return `根据以下用户输入，自动判断合适的练习类型并生成题目：
+
+用户输入: "${userInput}"
+目标CEFR等级: ${targetCefr}
+
+请先判断输入类型：
+- 如果是完整的中文句子/段落 → type: "translation"
+- 如果是话题关键词/学习目标/非完整句子 → type: "expression"
+- 不确定时默认 → type: "expression"
+
+根据判断结果，生成对应格式的JSON：
+
+**如果 type 为 "translation"：**
+1. type: "translation"
+2. chinesePrompt: 要翻译的中文内容（如果用户已输入完整句子，可直接使用或适当扩展）
+3. difficulty: CEFR等级
+4. keyPoints: 关键语义要点数组（2-5个）
+5. suggestedVocab: 推荐词汇数组（3-6个，含word/phonetic/partOfSpeech/chinese/exampleContext）
+6. difficultyMetadata: { targetCefr, vocabComplexity, grammarComplexity }
+
+**如果 type 为 "expression"：**
+1. type: "expression"
+2. chinesePrompt: 话题/场景描述（中文）
+3. guidingQuestions: 引导问题数组（2-4个中文问题）
+4. suggestedVocab: 推荐词汇数组（3-8个，含word/phonetic/partOfSpeech/chinese/exampleContext）
+5. grammarHints: 语法提示数组（1-3个，含point/explanation/pattern/example）
+6. difficultyMetadata: { targetCefr, vocabComplexity, grammarComplexity }
+
+只返回有效JSON，不要markdown格式。`;
+}
+
+// ============================================
 // Prompt Builders
 // ============================================
 

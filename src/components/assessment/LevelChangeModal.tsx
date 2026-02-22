@@ -8,7 +8,7 @@ interface LevelChangeModalProps {
   direction: 'up' | 'down';
   fromLevel: CEFRLevel;
   toLevel: CEFRLevel;
-  scoreDifference: number;
+  scoreDifference?: number;
   onAccept: () => void;
   onDecline: () => void;
   onManualSelect: (level: CEFRLevel) => void;

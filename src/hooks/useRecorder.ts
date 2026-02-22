@@ -4,6 +4,11 @@ import { useState, useRef, useCallback } from 'react';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
+export interface UseRecorderOptions {
+  maxDurationSeconds?: number;
+  onAutoStop?: (blob: Blob) => void;
+}
+
 export interface UseRecorderResult {
   state: RecordingState;
   isRecording: boolean;
@@ -17,7 +22,10 @@ export interface UseRecorderResult {
   isSupported: boolean;
 }
 
-export function useRecorder(): UseRecorderResult {
+export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
+  const { maxDurationSeconds, onAutoStop } = options || {};
+  const onAutoStopRef = useRef(onAutoStop);
+  onAutoStopRef.current = onAutoStop;
   const [state, setState] = useState<RecordingState>('idle');
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -29,6 +37,7 @@ export function useRecorder(): UseRecorderResult {
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
+  const autoStoppedRef = useRef(false);
 
   const isSupported = typeof window !== 'undefined' &&
     navigator.mediaDevices &&
@@ -88,9 +97,41 @@ export function useRecorder(): UseRecorderResult {
       setState('recording');
       startTimeRef.current = Date.now();
 
-      // Update duration every 100ms
+      // Handle auto-stop: when MediaRecorder stops without stopRecording being called
+      autoStoppedRef.current = false;
+      mediaRecorder.onstop = () => {
+        // Only handle auto-stop here; manual stop overrides this handler in stopRecording
+        if (!autoStoppedRef.current) return;
+
+        // Clear timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+
+        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType });
+        setAudioBlob(blob);
+
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+
+        setState('idle');
+        onAutoStopRef.current?.(blob);
+      };
+
+      // Update duration every 100ms, auto-stop at max duration
       timerRef.current = setInterval(() => {
-        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setDuration(elapsed);
+        if (maxDurationSeconds && elapsed >= maxDurationSeconds && mediaRecorderRef.current?.state === 'recording') {
+          autoStoppedRef.current = true;
+          mediaRecorderRef.current.stop();
+        }
       }, 100);
 
     } catch (err) {
@@ -107,7 +148,7 @@ export function useRecorder(): UseRecorderResult {
         setError('Failed to start recording');
       }
     }
-  }, [isSupported]);
+  }, [isSupported, maxDurationSeconds]);
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {
@@ -125,6 +166,7 @@ export function useRecorder(): UseRecorderResult {
       }
 
       const mediaRecorder = mediaRecorderRef.current;
+      autoStoppedRef.current = false;
 
       mediaRecorder.onstop = () => {
         // Create blob from chunks

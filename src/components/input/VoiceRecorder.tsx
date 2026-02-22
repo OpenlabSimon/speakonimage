@@ -1,8 +1,24 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
 import { convertToWav } from '@/lib/audio/convert';
+import type { CEFRLevel } from '@/types';
+
+const MAX_DURATION_SECONDS = 180; // 3 minutes absolute max
+
+function getSuggestedDuration(level?: CEFRLevel): number {
+  if (!level) return 120;
+  if (level === 'A1' || level === 'A2') return 60;
+  if (level === 'B1' || level === 'B2') return 120;
+  return 180; // C1, C2
+}
+
+function formatDurationLabel(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  if (mins <= 0) return `${seconds}秒`;
+  return `${mins}分钟`;
+}
 
 interface VoiceRecorderProps {
   onTranscriptionAndEvaluation: (result: {
@@ -16,6 +32,7 @@ interface VoiceRecorderProps {
   sessionId?: string; // Chat session ID for memory system
   onError?: (error: string) => void;
   disabled?: boolean;
+  cefrLevel?: CEFRLevel;
 }
 
 export function VoiceRecorder({
@@ -25,7 +42,14 @@ export function VoiceRecorder({
   sessionId,
   onError,
   disabled,
+  cefrLevel,
 }: VoiceRecorderProps) {
+  const suggestedDuration = getSuggestedDuration(cefrLevel);
+
+  const handleAutoStop = useCallback((blob: Blob) => {
+    handleSubmitVoiceRef.current?.(blob);
+  }, []);
+
   const {
     state,
     isRecording,
@@ -37,13 +61,14 @@ export function VoiceRecorder({
     stopRecording,
     resetRecording,
     isSupported,
-  } = useRecorder();
+  } = useRecorder({ maxDurationSeconds: MAX_DURATION_SECONDS, onAutoStop: handleAutoStop });
 
   const [processing, setProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
   const [apiError, setApiError] = useState<string | null>(null);
   const [transcription, setTranscription] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const handleSubmitVoiceRef = useRef<((blob: Blob) => Promise<void>) | null>(null);
 
   // Format duration as MM:SS
   const formatDuration = (seconds: number) => {
@@ -51,6 +76,11 @@ export function VoiceRecorder({
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Countdown: show remaining time from suggested duration, then count up past it
+  const remaining = Math.max(0, MAX_DURATION_SECONDS - duration);
+  const pastSuggested = duration > suggestedDuration;
+  const progressPercent = Math.min((duration / MAX_DURATION_SECONDS) * 100, 100);
 
   // Handle recording toggle
   const handleToggleRecording = async () => {
@@ -142,6 +172,9 @@ export function VoiceRecorder({
     }
   };
 
+  // Keep ref in sync for auto-stop callback
+  handleSubmitVoiceRef.current = handleSubmitVoice;
+
   // Handle re-record
   const handleReRecord = () => {
     resetRecording();
@@ -186,11 +219,32 @@ export function VoiceRecorder({
         </button>
 
         {isRecording && (
-          <div className="text-xl font-mono text-red-600 min-w-[60px]">
-            {formatDuration(duration)}
+          <div className="text-xl font-mono min-w-[60px]">
+            <span className={pastSuggested ? 'text-orange-600' : 'text-red-600'}>
+              {formatDuration(remaining)}
+            </span>
           </div>
         )}
       </div>
+
+      {/* Progress Bar */}
+      {isRecording && (
+        <div className="w-full max-w-xs mx-auto">
+          <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-200 ${
+                pastSuggested ? 'bg-orange-500' : 'bg-blue-500'
+              }`}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          {pastSuggested && (
+            <div className="text-xs text-orange-500 text-center mt-1">
+              已超过建议时长，可以停止了
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Status Text */}
       <div className="text-center text-sm text-gray-600">
@@ -202,7 +256,11 @@ export function VoiceRecorder({
             {processingStep || '处理中...'}
           </span>
         )}
-        {state === 'idle' && !audioBlob && !processing && !transcription && '点击麦克风开始录音'}
+        {state === 'idle' && !audioBlob && !processing && !transcription && (
+          <span>
+            建议录音 {formatDurationLabel(suggestedDuration)}，最长 {formatDurationLabel(MAX_DURATION_SECONDS)}
+          </span>
+        )}
       </div>
 
       {/* Audio Playback */}

@@ -17,21 +17,49 @@ export interface LevelHistory {
   lastUpdated: string; // ISO date
   introductionText?: string;
   recentScores: LevelScoreRecord[]; // Last 10 evaluations
+  consecutiveFailures: number; // Track consecutive below-level scores
 }
 
-// Jump detection result
-export interface JumpDetection {
-  detected: boolean;
-  direction: 'up' | 'down' | null;
+// Result from addScore — only downgrades happen automatically
+export interface LevelChangeResult {
+  downgraded: boolean;
   fromLevel: CEFRLevel;
   toLevel: CEFRLevel;
-  scoreDifference: number;
+  consecutiveFailures: number;
 }
 
 const STORAGE_KEY = 'speakonimage_level_history';
 const MAX_RECENT_SCORES = 10;
-const JUMP_THRESHOLD = 15; // Score difference threshold for jump detection
-const LEVEL_EXPIRY_DAYS = 7;
+const CONSECUTIVE_FAILURES_TO_DOWNGRADE = 3;
+
+// Ordered CEFR levels for navigation
+const CEFR_ORDER: CEFRLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+// Minimum score threshold for each level — scoring below this counts as a failure
+const LEVEL_FAILURE_THRESHOLD: Record<CEFRLevel, number> = {
+  A1: 0,  // Can't fail below A1
+  A2: 30,
+  B1: 45,
+  B2: 60,
+  C1: 75,
+  C2: 90,
+};
+
+/**
+ * Get the level one step below the given level (or A1 if already at bottom)
+ */
+function getLevelBelow(level: CEFRLevel): CEFRLevel {
+  const idx = CEFR_ORDER.indexOf(level);
+  return idx > 0 ? CEFR_ORDER[idx - 1] : 'A1';
+}
+
+/**
+ * Get the level one step above the given level (or C2 if already at top)
+ */
+function getLevelAbove(level: CEFRLevel): CEFRLevel {
+  const idx = CEFR_ORDER.indexOf(level);
+  return idx < CEFR_ORDER.length - 1 ? CEFR_ORDER[idx + 1] : 'C2';
+}
 
 // CEFR level to numeric mapping for calculations
 const LEVEL_TO_SCORE: Record<CEFRLevel, number> = {
@@ -70,48 +98,10 @@ export function levelToScore(level: CEFRLevel): number {
 }
 
 /**
- * Calculate weighted average score from recent scores
- * Recent scores are weighted more heavily: weight = 1 / (daysAgo + 1)
- */
-function calculateWeightedScore(scores: LevelScoreRecord[]): number {
-  if (scores.length === 0) return 50; // Default to B1 level
-
-  const now = new Date();
-  let weightedSum = 0;
-  let totalWeight = 0;
-
-  for (const record of scores) {
-    const recordDate = new Date(record.date);
-    const daysAgo = Math.floor(
-      (now.getTime() - recordDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    const weight = 1 / (daysAgo + 1);
-
-    weightedSum += record.score * weight;
-    totalWeight += weight;
-  }
-
-  return totalWeight > 0 ? weightedSum / totalWeight : 50;
-}
-
-/**
  * Calculate confidence based on number of samples
  */
 function calculateConfidence(sampleCount: number): number {
-  // Confidence increases with more samples, maxing out around 10 samples
   return Math.min(sampleCount / 10, 1);
-}
-
-/**
- * Check if level history has expired (older than 7 days)
- */
-function isLevelExpired(lastUpdated: string): boolean {
-  const lastDate = new Date(lastUpdated);
-  const now = new Date();
-  const daysDiff = Math.floor(
-    (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  return daysDiff > LEVEL_EXPIRY_DAYS;
 }
 
 /**
@@ -145,11 +135,9 @@ export function useLevelHistory() {
     }
   }, []);
 
-  // Check if user needs initial assessment
+  // Check if user needs initial assessment (only when no history exists)
   const needsAssessment = useCallback((): boolean => {
-    if (!history) return true;
-    if (isLevelExpired(history.lastUpdated)) return true;
-    return false;
+    return !history;
   }, [history]);
 
   // Initialize level from introduction assessment
@@ -161,6 +149,7 @@ export function useLevelHistory() {
         lastUpdated: new Date().toISOString(),
         introductionText,
         recentScores: [],
+        consecutiveFailures: 0,
       };
       saveHistory(newHistory);
       return newHistory;
@@ -168,9 +157,11 @@ export function useLevelHistory() {
     [saveHistory]
   );
 
-  // Add a new score and update level
+  // Add a new score — level stays the same by default.
+  // Auto-downgrades one level after CONSECUTIVE_FAILURES_TO_DOWNGRADE consecutive failures.
+  // Never auto-upgrades — user must call upgradeLevel() manually.
   const addScore = useCallback(
-    (score: number, estimatedLevel: CEFRLevel): JumpDetection => {
+    (score: number, estimatedLevel: CEFRLevel): LevelChangeResult => {
       const now = new Date().toISOString();
       const newRecord: LevelScoreRecord = {
         date: now,
@@ -183,42 +174,37 @@ export function useLevelHistory() {
         confidence: 0,
         lastUpdated: now,
         recentScores: [],
+        consecutiveFailures: 0,
       };
 
-      // Calculate average of recent scores before adding new one
-      const avgRecentScore =
-        currentHistory.recentScores.length > 0
-          ? currentHistory.recentScores.reduce((sum, r) => sum + r.score, 0) /
-            currentHistory.recentScores.length
-          : levelToScore(currentHistory.currentLevel);
+      const currentLevel = currentHistory.currentLevel;
+      const failureThreshold = LEVEL_FAILURE_THRESHOLD[currentLevel];
 
       // Add new score to recent scores (keep last 10)
       const newRecentScores = [
         ...currentHistory.recentScores.slice(-(MAX_RECENT_SCORES - 1)),
         newRecord,
       ];
-
-      // Calculate new weighted score and level
-      const weightedScore = calculateWeightedScore(newRecentScores);
-      const newLevel = scoreToLevel(weightedScore);
       const newConfidence = calculateConfidence(newRecentScores.length);
 
-      // Detect jumps
-      const scoreDifference = score - avgRecentScore;
-      const jumpDetected =
-        currentHistory.recentScores.length >= 2 &&
-        Math.abs(scoreDifference) > JUMP_THRESHOLD;
+      // Check if this score is a failure (below threshold for current level)
+      const isFailing = score < failureThreshold;
+      const newConsecutiveFailures = isFailing
+        ? (currentHistory.consecutiveFailures ?? 0) + 1
+        : 0; // Reset on any passing score
 
-      const jumpDetection: JumpDetection = {
-        detected: jumpDetected,
-        direction: jumpDetected
-          ? scoreDifference > 0
-            ? 'up'
-            : 'down'
-          : null,
-        fromLevel: currentHistory.currentLevel,
+      // Auto-downgrade if enough consecutive failures (and not already at A1)
+      const shouldDowngrade =
+        newConsecutiveFailures >= CONSECUTIVE_FAILURES_TO_DOWNGRADE &&
+        currentLevel !== 'A1';
+
+      const newLevel = shouldDowngrade ? getLevelBelow(currentLevel) : currentLevel;
+
+      const result: LevelChangeResult = {
+        downgraded: shouldDowngrade,
+        fromLevel: currentLevel,
         toLevel: newLevel,
-        scoreDifference,
+        consecutiveFailures: shouldDowngrade ? 0 : newConsecutiveFailures,
       };
 
       // Save updated history
@@ -228,13 +214,29 @@ export function useLevelHistory() {
         confidence: newConfidence,
         lastUpdated: now,
         recentScores: newRecentScores,
+        consecutiveFailures: shouldDowngrade ? 0 : newConsecutiveFailures,
       };
       saveHistory(newHistory);
 
-      return jumpDetection;
+      return result;
     },
     [history, saveHistory]
   );
+
+  // Upgrade level by one step (user-initiated only)
+  const upgradeLevel = useCallback(() => {
+    if (!history) return;
+    const nextLevel = getLevelAbove(history.currentLevel);
+    if (nextLevel === history.currentLevel) return; // Already at C2
+
+    const newHistory: LevelHistory = {
+      ...history,
+      currentLevel: nextLevel,
+      lastUpdated: new Date().toISOString(),
+      consecutiveFailures: 0,
+    };
+    saveHistory(newHistory);
+  }, [history, saveHistory]);
 
   // Manually set level (user override)
   const setLevel = useCallback(
@@ -244,12 +246,14 @@ export function useLevelHistory() {
         confidence: 0.5,
         lastUpdated: new Date().toISOString(),
         recentScores: [],
+        consecutiveFailures: 0,
       };
 
       const newHistory: LevelHistory = {
         ...currentHistory,
         currentLevel: level,
         lastUpdated: new Date().toISOString(),
+        consecutiveFailures: 0,
       };
       saveHistory(newHistory);
     },
@@ -277,6 +281,7 @@ export function useLevelHistory() {
     needsAssessment,
     initializeLevel,
     addScore,
+    upgradeLevel,
     setLevel,
     getCurrentLevel,
     clearHistory,
