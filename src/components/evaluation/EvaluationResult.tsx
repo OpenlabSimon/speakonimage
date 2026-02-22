@@ -7,6 +7,7 @@ import { GrammarErrors } from './GrammarErrors';
 import { Suggestions } from './Suggestions';
 import { HistoryComparison } from './HistoryComparison';
 import { CharacterFeedback } from './CharacterFeedback';
+import { PracticeGameButton } from './PracticeGameButton';
 import type { TranslationEvaluationScores, ExpressionEvaluationScores, GrammarErrorItem } from '@/types';
 import type { TeacherCharacterId } from '@/lib/characters/types';
 
@@ -27,6 +28,8 @@ interface EvaluationResultProps {
   currentAttempt?: number;
   onRetry: () => void;
   onNext: () => void;
+  onPracticeGame?: () => void;
+  isPracticeGameLoading?: boolean;
   characterId?: TeacherCharacterId;
   topicType?: string;
   chinesePrompt?: string;
@@ -43,6 +46,8 @@ export function EvaluationResult({
   currentAttempt = 1,
   onRetry,
   onNext,
+  onPracticeGame,
+  isPracticeGameLoading,
   characterId,
   topicType,
   chinesePrompt,
@@ -135,21 +140,26 @@ export function EvaluationResult({
       </div>
 
       {/* Action Buttons */}
-      <div className="p-4 bg-gray-50 border-t flex gap-3">
-        <button
-          onClick={onRetry}
-          className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
-        >
-          <span>🔄</span>
-          再试一次
-        </button>
-        <button
-          onClick={onNext}
-          className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
-        >
-          <span>➡️</span>
-          下一个话题
-        </button>
+      <div className="p-4 bg-gray-50 border-t space-y-3">
+        {onPracticeGame && (
+          <PracticeGameButton onClick={onPracticeGame} isLoading={isPracticeGameLoading} />
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onRetry}
+            className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+          >
+            <span>🔄</span>
+            再试一次
+          </button>
+          <button
+            onClick={onNext}
+            className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+          >
+            <span>➡️</span>
+            下一个话题
+          </button>
+        </div>
       </div>
     </div>
     </>

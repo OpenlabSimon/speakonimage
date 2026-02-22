@@ -11,9 +11,12 @@ import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
 import { CharacterSelector } from '@/components/evaluation/CharacterSelector';
 import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
+import { PracticeGameOverlay } from '@/components/evaluation/PracticeGameOverlay';
 import { useLevelHistory, type LevelChangeResult } from '@/hooks/useLevelHistory';
 import { useConversation } from '@/hooks/useConversation';
 import { useCharacterSelection } from '@/hooks/useCharacterSelection';
+import { usePracticeGame } from '@/hooks/usePracticeGame';
+import { getCharacter } from '@/lib/characters';
 import type {
   TopicContent,
   VocabularyItem,
@@ -81,6 +84,21 @@ export default function TopicPracticePage() {
     autoStart: true,
     isAuthenticated,
   });
+
+  // Practice game hook
+  const practiceGame = usePracticeGame(
+    currentEvaluation && topicData && userResponse && characterId
+      ? {
+          characterId,
+          topicType: topicData.type,
+          chinesePrompt: topicData.chinesePrompt,
+          userResponse,
+          overallScore: currentEvaluation.overallScore,
+          evaluation: currentEvaluation.evaluation as unknown as Record<string, unknown>,
+          cefrLevel: getCurrentLevel(),
+        }
+      : null
+  );
 
   // Load topic data from localStorage
   useEffect(() => {
@@ -368,6 +386,8 @@ export default function TopicPracticePage() {
             currentAttempt={attempts.length}
             onRetry={handleRetry}
             onNext={handleNext}
+            onPracticeGame={practiceGame.launchGame}
+            isPracticeGameLoading={practiceGame.isLoading}
             characterId={characterId}
             topicType={topicData.type}
             chinesePrompt={topicData.chinesePrompt}
@@ -430,6 +450,18 @@ export default function TopicPracticePage() {
             onManualSelect={handleManualLevelSelect}
           />
         )}
+
+        {/* Practice Game Overlay */}
+        <PracticeGameOverlay
+          isOpen={practiceGame.isOpen}
+          isLoading={practiceGame.isLoading}
+          error={practiceGame.error}
+          gameHtml={practiceGame.gameHtml}
+          gameProgress={practiceGame.gameProgress}
+          gameResult={practiceGame.gameResult}
+          characterEmoji={characterId ? getCharacter(characterId).emoji : undefined}
+          onClose={practiceGame.closeGame}
+        />
       </div>
     );
   }
