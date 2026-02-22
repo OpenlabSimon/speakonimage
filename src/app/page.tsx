@@ -82,8 +82,8 @@ export default function Home() {
       },
     };
 
-    sessionStorage.setItem('currentTopic', JSON.stringify(introTopic));
-    sessionStorage.removeItem('topicAttempts');
+    localStorage.setItem('currentTopic', JSON.stringify(introTopic));
+    localStorage.removeItem('topicAttempts');
     router.push('/topic/practice');
   };
 
@@ -115,8 +115,8 @@ export default function Home() {
         throw new Error(result.error || '生成话题失败');
       }
 
-      // Store topic data in sessionStorage
-      sessionStorage.setItem('currentTopic', JSON.stringify(result.data));
+      // Store topic data in localStorage (survives refresh)
+      localStorage.setItem('currentTopic', JSON.stringify(result.data));
 
       // Navigate to topic page
       router.push('/topic/practice');

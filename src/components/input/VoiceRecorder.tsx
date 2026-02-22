@@ -6,6 +6,7 @@ import { convertToWav } from '@/lib/audio/convert';
 import type { CEFRLevel } from '@/types';
 
 const MAX_DURATION_SECONDS = 180; // 3 minutes absolute max
+const MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
 function getSuggestedDuration(level?: CEFRLevel): number {
   if (!level) return 120;
@@ -45,9 +46,15 @@ export function VoiceRecorder({
   cefrLevel,
 }: VoiceRecorderProps) {
   const suggestedDuration = getSuggestedDuration(cefrLevel);
+  const pendingAutoStopBlobRef = useRef<Blob | null>(null);
 
   const handleAutoStop = useCallback((blob: Blob) => {
-    handleSubmitVoiceRef.current?.(blob);
+    if (handleSubmitVoiceRef.current) {
+      handleSubmitVoiceRef.current(blob);
+    } else {
+      // Queue blob for processing once ref is ready
+      pendingAutoStopBlobRef.current = blob;
+    }
   }, []);
 
   const {
@@ -100,6 +107,13 @@ export function VoiceRecorder({
 
   // Submit voice for transcription + evaluation in one step
   const handleSubmitVoice = async (blob: Blob) => {
+    if (blob.size > MAX_AUDIO_SIZE_BYTES) {
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+      setApiError(`音频文件过大 (${sizeMB}MB)，请缩短录音时间`);
+      onError?.('音频文件过大');
+      return;
+    }
+
     setProcessing(true);
     setApiError(null);
     setProcessingStep('转换音频...');
@@ -174,6 +188,13 @@ export function VoiceRecorder({
 
   // Keep ref in sync for auto-stop callback
   handleSubmitVoiceRef.current = handleSubmitVoice;
+
+  // Process any queued auto-stop blob
+  if (pendingAutoStopBlobRef.current) {
+    const blob = pendingAutoStopBlobRef.current;
+    pendingAutoStopBlobRef.current = null;
+    handleSubmitVoice(blob);
+  }
 
   // Handle re-record
   const handleReRecord = () => {

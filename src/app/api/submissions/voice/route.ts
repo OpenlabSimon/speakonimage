@@ -38,6 +38,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate audio file size (50MB max)
+    const MAX_AUDIO_SIZE = 50 * 1024 * 1024;
+    if (audioFile.size > MAX_AUDIO_SIZE) {
+      return NextResponse.json<ApiResponse<null>>(
+        { success: false, error: 'Audio file too large (max 50MB)' },
+        { status: 413 }
+      );
+    }
+
     // Get topic data from form
     const topicDataStr = formData.get('topicData') as string | null;
     if (!topicDataStr) {

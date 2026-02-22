@@ -82,14 +82,14 @@ export default function TopicPracticePage() {
     isAuthenticated,
   });
 
-  // Load topic data from sessionStorage
+  // Load topic data from localStorage
   useEffect(() => {
-    const stored = sessionStorage.getItem('currentTopic');
+    const stored = localStorage.getItem('currentTopic');
     if (stored) {
       try {
         setTopicData(JSON.parse(stored));
         // Load previous attempts if any
-        const storedAttempts = sessionStorage.getItem('topicAttempts');
+        const storedAttempts = localStorage.getItem('topicAttempts');
         if (storedAttempts) {
           setAttempts(JSON.parse(storedAttempts));
         }
@@ -101,9 +101,9 @@ export default function TopicPracticePage() {
     }
   }, [router]);
 
-  // Save attempts to sessionStorage
+  // Save attempts to localStorage
   const saveAttempts = useCallback((newAttempts: AttemptData[]) => {
-    sessionStorage.setItem('topicAttempts', JSON.stringify(newAttempts));
+    localStorage.setItem('topicAttempts', JSON.stringify(newAttempts));
     setAttempts(newAttempts);
   }, []);
 
@@ -281,8 +281,8 @@ export default function TopicPracticePage() {
   // Handle next topic - end session, clear everything and go to home
   const handleNext = async () => {
     await conversation.endSession();
-    sessionStorage.removeItem('currentTopic');
-    sessionStorage.removeItem('topicAttempts');
+    localStorage.removeItem('currentTopic');
+    localStorage.removeItem('topicAttempts');
     router.push('/');
   };
 
