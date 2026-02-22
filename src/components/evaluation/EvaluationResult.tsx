@@ -6,7 +6,9 @@ import { SemanticFeedback } from './SemanticFeedback';
 import { GrammarErrors } from './GrammarErrors';
 import { Suggestions } from './Suggestions';
 import { HistoryComparison } from './HistoryComparison';
+import { CharacterFeedback } from './CharacterFeedback';
 import type { TranslationEvaluationScores, ExpressionEvaluationScores, GrammarErrorItem } from '@/types';
+import type { TeacherCharacterId } from '@/lib/characters/types';
 
 type EvaluationData = TranslationEvaluationScores | ExpressionEvaluationScores;
 
@@ -25,6 +27,9 @@ interface EvaluationResultProps {
   currentAttempt?: number;
   onRetry: () => void;
   onNext: () => void;
+  characterId?: TeacherCharacterId;
+  topicType?: string;
+  chinesePrompt?: string;
 }
 
 type TabType = 'overview' | 'feedback' | 'grammar' | 'improve' | 'history';
@@ -37,6 +42,9 @@ export function EvaluationResult({
   currentAttempt = 1,
   onRetry,
   onNext,
+  characterId,
+  topicType,
+  chinesePrompt,
 }: EvaluationResultProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -59,6 +67,19 @@ export function EvaluationResult({
   }
 
   return (
+    <>
+    {/* Character Feedback (async, loads independently) */}
+    {characterId && topicType && chinesePrompt && (
+      <CharacterFeedback
+        characterId={characterId}
+        overallScore={overallScore}
+        evaluation={evaluation}
+        userResponse={userResponse}
+        topicType={topicType}
+        chinesePrompt={chinesePrompt}
+      />
+    )}
+
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       {/* User Response Summary */}
       <div className="bg-gray-50 px-4 py-3 border-b">
@@ -128,5 +149,6 @@ export function EvaluationResult({
         </button>
       </div>
     </div>
+    </>
   );
 }

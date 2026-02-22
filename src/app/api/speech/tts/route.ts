@@ -3,10 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 // TTS provider types
 type TTSProvider = 'azure' | 'elevenlabs';
 
+interface VoiceSettings {
+  modelId?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  speakerBoost?: boolean;
+}
+
 interface TTSRequest {
   text: string;
   provider?: TTSProvider;
   voice?: string;
+  voiceSettings?: VoiceSettings;
 }
 
 /**
@@ -57,7 +66,7 @@ async function azureTTS(text: string, voice?: string): Promise<ArrayBuffer> {
  * ElevenLabs TTS API
  * Docs: https://elevenlabs.io/docs/api-reference/text-to-speech
  */
-async function elevenlabsTTS(text: string, voice?: string): Promise<ArrayBuffer> {
+async function elevenlabsTTS(text: string, voice?: string, voiceSettings?: VoiceSettings): Promise<ArrayBuffer> {
   const key = process.env.ELEVENLABS_API_KEY;
 
   if (!key) {
@@ -78,10 +87,12 @@ async function elevenlabsTTS(text: string, voice?: string): Promise<ArrayBuffer>
       },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_monolingual_v1',
+        model_id: voiceSettings?.modelId || 'eleven_monolingual_v1',
         voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
+          stability: voiceSettings?.stability ?? 0.5,
+          similarity_boost: voiceSettings?.similarityBoost ?? 0.75,
+          ...(voiceSettings?.style !== undefined && { style: voiceSettings.style }),
+          ...(voiceSettings?.speakerBoost !== undefined && { use_speaker_boost: voiceSettings.speakerBoost }),
         },
       }),
     }
@@ -107,7 +118,7 @@ function escapeXml(text: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body: TTSRequest = await request.json();
-    const { text, provider = 'azure', voice } = body;
+    const { text, provider = 'azure', voice, voiceSettings } = body;
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
@@ -127,7 +138,7 @@ export async function POST(request: NextRequest) {
     let audioBuffer: ArrayBuffer;
 
     if (provider === 'elevenlabs') {
-      audioBuffer = await elevenlabsTTS(text, voice);
+      audioBuffer = await elevenlabsTTS(text, voice, voiceSettings);
     } else {
       audioBuffer = await azureTTS(text, voice);
     }

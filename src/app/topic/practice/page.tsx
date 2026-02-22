@@ -9,9 +9,11 @@ import { GrammarPanel } from '@/components/topic/GrammarCard';
 import { VoiceRecorder } from '@/components/input/VoiceRecorder';
 import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
+import { CharacterSelector } from '@/components/evaluation/CharacterSelector';
 import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
 import { useLevelHistory, levelToScore, type JumpDetection } from '@/hooks/useLevelHistory';
 import { useConversation } from '@/hooks/useConversation';
+import { useCharacterSelection } from '@/hooks/useCharacterSelection';
 import type {
   TopicContent,
   VocabularyItem,
@@ -58,6 +60,7 @@ export default function TopicPracticePage() {
   const { data: authSession } = useSession();
   const isAuthenticated = !!authSession?.user;
   const { addScore, setLevel, getCurrentLevel } = useLevelHistory();
+  const { characterId, setCharacterId } = useCharacterSelection();
 
   const [topicData, setTopicData] = useState<TopicData | null>(null);
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
@@ -357,6 +360,9 @@ export default function TopicPracticePage() {
             currentAttempt={attempts.length}
             onRetry={handleRetry}
             onNext={handleNext}
+            characterId={characterId}
+            topicType={topicData.type}
+            chinesePrompt={topicData.chinesePrompt}
           />
 
           {/* Previous Recordings */}
@@ -441,6 +447,11 @@ export default function TopicPracticePage() {
               等级: {getCurrentLevel()}
             </div>
           </div>
+        </div>
+
+        {/* Teacher Character Selector */}
+        <div className="mb-4">
+          <CharacterSelector selectedId={characterId} onSelect={setCharacterId} />
         </div>
 
         {/* Chinese Prompt */}

@@ -4,9 +4,18 @@ import { useCallback, useState, useRef } from 'react';
 
 export type TTSProvider = 'azure' | 'elevenlabs';
 
+export interface VoiceSettings {
+  modelId?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+  speakerBoost?: boolean;
+}
+
 export interface UseTTSOptions {
   provider?: TTSProvider;
   voice?: string;
+  voiceSettings?: VoiceSettings;
 }
 
 export interface UseTTSResult {
@@ -23,7 +32,7 @@ export interface UseTTSResult {
  * - ElevenLabs: for feedback and reviews
  */
 export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
-  const { provider = 'azure', voice } = options;
+  const { provider = 'azure', voice, voiceSettings } = options;
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +59,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
       const response = await fetch('/api/speech/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, provider, voice }),
+        body: JSON.stringify({ text, provider, voice, ...(voiceSettings && { voiceSettings }) }),
       });
 
       const result = await response.json();
@@ -87,7 +96,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
     } finally {
       setIsLoading(false);
     }
-  }, [provider, voice, stop]);
+  }, [provider, voice, voiceSettings, stop]);
 
   return {
     speak,
