@@ -250,11 +250,7 @@ export interface LanguageProfile {
 // Platform Abstractions
 // ============================================
 
-// LLM Provider interface
-export interface LLMProvider {
-  generateJSON<T>(prompt: string, systemPrompt?: string): Promise<T>;
-  generateText(prompt: string, systemPrompt?: string): Promise<string>;
-}
+// Note: LLMProvider interface lives in @/lib/llm/provider.ts (canonical source)
 
 // Audio recorder interface
 export interface AudioRecorder {

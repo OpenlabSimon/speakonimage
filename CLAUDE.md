@@ -179,6 +179,31 @@ Phase 3 准备工作（预留字段和接口）：
 - `src/lib/spaced-repetition/ReviewScheduler.ts`
 - `src/app/api/review/route.ts`
 
+## 已知技术债（低优先级，供日后清理参考）
+
+以下问题不影响功能，但在相关代码变动时可顺手修复：
+
+1. **Dead code: `useAzureTTS` / `useElevenLabsTTS`**
+   - 文件: `src/hooks/useTTS.ts` (约 124-132 行)
+   - 两个 convenience wrapper 未被任何组件引用，可删除
+
+2. **重复的 severity transform**
+   - 文件: `src/lib/llm/prompts/evaluate-translation.ts` (34-39 行) 和 `evaluate-expression.ts` (27-32 行)
+   - 相同的 `.transform()` 逻辑各写了一份，可提取为共享函数
+
+3. **Session 类型双重定义**
+   - 文件: `src/types/index.ts` 和 `src/lib/memory/types.ts`
+   - `SessionType`, `SessionStatus`, `MessageRole`, `MessageContentType` 同时定义在两个文件
+   - `index.ts` 已 re-export，故不会冲突，但重复定义易造成困惑
+
+4. **HTTP 状态码一致性**
+   - 部分 API route 对"服务未配置"返回 500，语义上 503 更准确
+   - 例: `src/app/api/speech/transcribe/route.ts` (32 行)
+
+5. **无共享 HTTP 状态码常量**
+   - 各 API route 直接硬编码 400/403/404/500 等数字
+   - 项目规模尚小，暂无影响；规模扩大后可考虑抽取 `API_ERRORS` 常量模块
+
 ## Phase 2+ 可选功能
 
 以下功能留待后续版本：
