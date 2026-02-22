@@ -34,6 +34,7 @@ model Speaker {
   grammarErrors   GrammarError[]
   vocabularyUsage VocabularyUsage[]
   chatSessions    ChatSession[]
+  reviewItems     ReviewItem[]
 }
 
 // Topic - a generated learning topic
@@ -143,4 +144,29 @@ model ChatMessage {
   session         ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
+}
+
+// ReviewItem - FSRS spaced repetition items (per-concept, not per-submission)
+model ReviewItem {
+  id            String   @id @default(uuid())
+  speakerId     String
+  itemType      String   // 'vocabulary' | 'grammar'
+  itemKey       String   // word or error pattern
+  displayData   Json     // { word, context, cefrLevel } or { pattern, example, correction }
+  stability     Float    @default(0)
+  difficulty    Float    @default(0)
+  elapsedDays   Float    @default(0)
+  scheduledDays Float    @default(0)
+  reps          Int      @default(0)
+  lapses        Int      @default(0)
+  state         String   @default("New")  // 'New' | 'Learning' | 'Review' | 'Relearning'
+  lastReview    DateTime?
+  nextReview    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  speaker       Speaker  @relation(fields: [speakerId], references: [id], onDelete: Cascade)
+
+  @@unique([speakerId, itemType, itemKey])
+  @@index([speakerId, nextReview])
 }

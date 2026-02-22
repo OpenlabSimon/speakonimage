@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import Link from 'next/link';
 import { UserMenu } from '@/components/ui/UserMenu';
 import { IntroductionInput } from '@/components/assessment/IntroductionInput';
 import { useLevelHistory } from '@/hooks/useLevelHistory';
@@ -27,6 +29,8 @@ export default function Home() {
   const [showManualLevelSelect, setShowManualLevelSelect] = useState(false);
   const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
   const [introductionText, setIntroductionText] = useState<string>('');
+  const [dueCount, setDueCount] = useState(0);
+  const { status: authStatus } = useSession();
 
   // Determine initial step based on level history
   useEffect(() => {
@@ -38,6 +42,20 @@ export default function Home() {
       }
     }
   }, [isLoaded, needsAssessment]);
+
+  // Fetch review stats for badge
+  useEffect(() => {
+    if (authStatus === 'authenticated') {
+      fetch('/api/review/stats')
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && json.data) {
+            setDueCount(json.data.dueCount);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [authStatus]);
 
   // Handle assessment completion
   const handleAssessmentComplete = (
@@ -300,6 +318,22 @@ export default function Home() {
                 </span>
               </div>
             </div>
+
+            {/* Review Badge */}
+            {dueCount > 0 && (
+              <Link
+                href="/review"
+                className="block mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-600 font-medium text-sm">[复习提醒]</span>
+                    <span className="text-sm text-gray-700">{dueCount} 个项目需要复习</span>
+                  </div>
+                  <span className="text-amber-600 text-sm">→</span>
+                </div>
+              </Link>
+            )}
 
             {/* Error Display */}
             {error && (

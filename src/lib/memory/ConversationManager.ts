@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { compressContext, estimateTokens } from './ContextCompressor';
 import { extractSessionLearningData } from './SessionExtractor';
+import { computeAndUpdateProfile } from '@/lib/profile/ProfileManager';
 
 // Default context building options
 const DEFAULT_CONTEXT_OPTIONS: Required<ContextBuildOptions> = {
@@ -293,9 +294,9 @@ export async function endSession(
     const messages = await getMessages(sessionId);
     extractedData = await extractSessionLearningData(messages, session);
 
-    // Update speaker profile if requested
+    // Update speaker profile via ProfileManager (DB aggregation, no LLM)
     if (opts.updateProfile && session.speakerId) {
-      await updateSpeakerProfileFromExtraction(session.speakerId, extractedData);
+      await computeAndUpdateProfile(session.speakerId);
     }
   }
 
@@ -322,107 +323,6 @@ export async function endSession(
     messageCount: updated.messageCount,
     extractedData: updated.extractedData as unknown as ChatSession['extractedData'],
   };
-}
-
-/**
- * Update speaker profile based on session extraction
- */
-async function updateSpeakerProfileFromExtraction(
-  speakerId: string,
-  extractedData: Awaited<ReturnType<typeof extractSessionLearningData>>
-): Promise<void> {
-  const speaker = await prisma.speaker.findUnique({
-    where: { id: speakerId },
-    select: { languageProfile: true },
-  });
-
-  if (!speaker) return;
-
-  const currentProfile = (speaker.languageProfile as Record<string, unknown>) || {};
-
-  // Build updated profile
-  const grammarProfile = (currentProfile.grammarProfile as Record<string, unknown>) || {
-    mastered: [],
-    developing: [],
-    persistentErrors: [],
-  };
-
-  // Update persistent errors
-  const existingErrors = (grammarProfile.persistentErrors as Array<{
-    pattern: string;
-    occurrenceCount: number;
-    lastOccurred: string;
-    trend: string;
-    example?: string;
-  }>) || [];
-
-  for (const error of extractedData.errors) {
-    const existingIndex = existingErrors.findIndex(
-      (e) => e.pattern === error.pattern
-    );
-
-    if (existingIndex >= 0) {
-      // Update existing error
-      existingErrors[existingIndex].occurrenceCount += 1;
-      existingErrors[existingIndex].lastOccurred = new Date().toISOString();
-      // Update trend based on recurrence
-      if (error.isRecurring) {
-        existingErrors[existingIndex].trend = 'increasing';
-      }
-    } else {
-      // Add new error
-      existingErrors.push({
-        pattern: error.pattern,
-        example: error.userSaid,
-        occurrenceCount: 1,
-        lastOccurred: new Date().toISOString(),
-        trend: 'stable',
-      });
-    }
-  }
-
-  // Update grammar points touched
-  const developing = new Set(grammarProfile.developing as string[] || []);
-  for (const point of extractedData.grammarPointsTouched) {
-    developing.add(point);
-  }
-
-  // Update vocabulary profile
-  const vocabProfile = (currentProfile.vocabularyProfile as Record<string, unknown>) || {
-    activeVocabSizeEstimate: 0,
-    favoriteWords: [],
-    vocabLevelDistribution: {},
-    recentlyLearned: [],
-  };
-
-  const recentlyLearned = (vocabProfile.recentlyLearned as string[]) || [];
-  for (const vocab of extractedData.newVocabulary) {
-    if (!recentlyLearned.includes(vocab.word)) {
-      recentlyLearned.unshift(vocab.word);
-    }
-  }
-  // Keep only last 50 words
-  vocabProfile.recentlyLearned = recentlyLearned.slice(0, 50);
-
-  // Save updated profile
-  const updatedProfile = {
-    ...currentProfile,
-    lastUpdated: new Date().toISOString(),
-    grammarProfile: {
-      ...grammarProfile,
-      developing: Array.from(developing),
-      persistentErrors: existingErrors,
-    },
-    vocabularyProfile: vocabProfile,
-  };
-
-  await prisma.speaker.update({
-    where: { id: speakerId },
-    data: {
-      languageProfile: JSON.parse(JSON.stringify(updatedProfile)),
-      lastActiveAt: new Date(),
-    },
-  });
 }
 
 /**

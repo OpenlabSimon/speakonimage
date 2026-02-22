@@ -105,7 +105,8 @@ function createEmptyExtraction(): TypedExtractionResult {
 }
 
 /**
- * Extract and aggregate errors from a session into GrammarError records
+ * Extract and aggregate errors from a session into GrammarError records.
+ * Links errors to the most recent submission in the session.
  */
 export async function saveExtractedErrors(
   session: ChatSession,
@@ -115,35 +116,35 @@ export async function saveExtractedErrors(
     return;
   }
 
-  // Get existing error patterns for this speaker
-  const existingPatterns = await prisma.grammarError.findMany({
-    where: { speakerId: session.speakerId },
-    select: { errorPattern: true, id: true },
+  // Find the most recent submission in this session's topic to link errors to
+  const recentSubmission = await prisma.submission.findFirst({
+    where: {
+      speakerId: session.speakerId,
+      ...(session.topicId ? { topicId: session.topicId } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
   });
 
-  const existingPatternSet = new Set(existingPatterns.map(e => e.errorPattern.toLowerCase()));
-
-  // Create new error records for new patterns
-  const newErrors = extraction.errors
-    .filter(e => !existingPatternSet.has(e.pattern.toLowerCase()))
-    .map(e => ({
-      speakerId: session.speakerId!,
-      submissionId: '', // Will need to link to a submission if required
-      errorPattern: e.pattern,
-      originalText: e.userSaid,
-      correctedText: e.correction,
-      severity: e.severity,
-    }));
-
-  // Note: This creates standalone error records not linked to submissions
-  // For the full flow, errors should be linked during submission processing
-  if (newErrors.length > 0) {
-    console.log(`Extracted ${newErrors.length} new error patterns from session ${session.id}`);
+  if (!recentSubmission) {
+    return;
   }
+
+  const errorRecords = extraction.errors.map((e) => ({
+    submissionId: recentSubmission.id,
+    speakerId: session.speakerId!,
+    errorPattern: e.pattern,
+    originalText: e.userSaid,
+    correctedText: e.correction,
+    severity: e.severity,
+  }));
+
+  await prisma.grammarError.createMany({ data: errorRecords });
 }
 
 /**
- * Extract vocabulary usage from a session
+ * Extract vocabulary usage from a session and write to VocabularyUsage table.
+ * Links vocab to the most recent submission in the session.
  */
 export async function saveExtractedVocabulary(
   session: ChatSession,
@@ -153,22 +154,30 @@ export async function saveExtractedVocabulary(
     return;
   }
 
-  // Get existing vocabulary for this speaker
-  const existingVocab = await prisma.vocabularyUsage.findMany({
-    where: { speakerId: session.speakerId },
-    select: { word: true },
+  // Find the most recent submission in this session's topic
+  const recentSubmission = await prisma.submission.findFirst({
+    where: {
+      speakerId: session.speakerId,
+      ...(session.topicId ? { topicId: session.topicId } : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
   });
 
-  const existingWords = new Set(existingVocab.map(v => v.word.toLowerCase()));
-
-  // Log new vocabulary (actual tracking happens through submissions)
-  const newWords = extraction.newVocabulary.filter(
-    v => !existingWords.has(v.word.toLowerCase())
-  );
-
-  if (newWords.length > 0) {
-    console.log(`Extracted ${newWords.length} new vocabulary items from session ${session.id}`);
+  if (!recentSubmission) {
+    return;
   }
+
+  const vocabRecords = extraction.newVocabulary.map((v) => ({
+    submissionId: recentSubmission.id,
+    speakerId: session.speakerId!,
+    word: v.word,
+    wasFromHint: false,
+    usedCorrectly: v.mastery !== 'new',
+    cefrLevel: v.cefrLevel || null,
+  }));
+
+  await prisma.vocabularyUsage.createMany({ data: vocabRecords });
 }
 
 /**
