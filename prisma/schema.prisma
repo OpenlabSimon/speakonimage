@@ -8,15 +8,48 @@ datasource db {
 
 // Account - a registered user
 model Account {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  settings  Json     @default("{}")
-  createdAt DateTime @default(now())
+  id            String    @id @default(uuid())
+  email         String?   @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  isGuest       Boolean   @default(false)
+  settings      Json      @default("{}")
+  createdAt     DateTime  @default(now())
 
-  speakers     Speaker[]
-  topics       Topic[]
-  submissions  Submission[]
-  chatSessions ChatSession[]
+  speakers      Speaker[]
+  topics        Topic[]
+  submissions   Submission[]
+  chatSessions  ChatSession[]
+  oauthAccounts OAuthAccount[]
+}
+
+// OAuthAccount - links external OAuth providers to an Account
+model OAuthAccount {
+  id                String  @id @default(uuid())
+  accountId         String
+  provider          String  // 'google' | 'wechat' | 'credentials'
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String?
+
+  account           Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([accountId])
+}
+
+// VerificationToken - for email verification
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 // Speaker - one account may have multiple speakers (family sharing)

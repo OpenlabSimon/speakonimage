@@ -33,16 +33,24 @@ export function UserMenu() {
     );
   }
 
-  const email = session.user?.email || '';
-  const initial = email.charAt(0).toUpperCase();
+  const isGuest = session.user?.isGuest;
+  const name = session.user?.name;
+  const email = session.user?.email;
+  const image = session.user?.image;
+  const displayName = name || email || '游客';
+  const initial = isGuest ? '游' : (name || email || '?').charAt(0).toUpperCase();
 
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-medium hover:bg-blue-600 transition-colors"
+        className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-medium hover:bg-blue-600 transition-colors overflow-hidden"
       >
-        {initial}
+        {image ? (
+          <img src={image} alt={displayName} className="w-full h-full object-cover" />
+        ) : (
+          initial
+        )}
       </button>
 
       {isOpen && (
@@ -57,21 +65,31 @@ export function UserMenu() {
           <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <div className="text-sm font-medium text-gray-900 truncate">
-                {email}
+                {displayName}
               </div>
               <div className="text-xs text-gray-500">
-                已登录
+                {isGuest ? '游客模式' : '已登录'}
               </div>
             </div>
 
             <div className="py-1">
-              <Link
-                href="/profile"
-                onClick={() => setIsOpen(false)}
-                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              >
-                我的档案
-              </Link>
+              {isGuest ? (
+                <Link
+                  href="/auth/upgrade"
+                  onClick={() => setIsOpen(false)}
+                  className="block px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 font-medium"
+                >
+                  升级账号
+                </Link>
+              ) : (
+                <Link
+                  href="/profile"
+                  onClick={() => setIsOpen(false)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  我的档案
+                </Link>
+              )}
               <button
                 onClick={() => {
                   setIsOpen(false);

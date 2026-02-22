@@ -1,16 +1,21 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import Google from 'next-auth/providers/google';
 import { compare, hash } from 'bcryptjs';
 import { prisma } from '@/lib/db';
+import { PrismaAdapter } from '@/lib/auth/adapter';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  adapter: PrismaAdapter(),
   providers: [
+    // Email/password login + register
     Credentials({
+      id: 'credentials',
       name: 'credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
-        action: { label: 'Action', type: 'text' }, // 'login' or 'register'
+        action: { label: 'Action', type: 'text' },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -19,10 +24,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const email = credentials.email as string;
         const password = credentials.password as string;
-        const action = credentials.action as string || 'login';
+        const action = (credentials.action as string) || 'login';
 
         if (action === 'register') {
-          // Check if user exists
           const existingUser = await prisma.account.findUnique({
             where: { email },
           });
@@ -31,7 +35,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             throw new Error('User already exists');
           }
 
-          // Hash password and create user
           const hashedPassword = await hash(password, 12);
 
           const newUser = await prisma.account.create({
@@ -41,7 +44,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             },
           });
 
-          // Create default speaker for the user
+          // Create default speaker
           await prisma.speaker.create({
             data: {
               accountId: newUser.id,
@@ -57,6 +60,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return {
             id: newUser.id,
             email: newUser.email,
+            name: newUser.name,
+            image: newUser.image,
+            isGuest: false,
           };
         }
 
@@ -85,20 +91,139 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return {
           id: user.id,
           email: user.email,
+          name: user.name,
+          image: user.image,
+          isGuest: user.isGuest,
         };
       },
     }),
+
+    // Anonymous guest login
+    Credentials({
+      id: 'anonymous',
+      name: 'anonymous',
+      credentials: {},
+      async authorize() {
+        const guest = await prisma.account.create({
+          data: {
+            isGuest: true,
+            settings: {},
+          },
+        });
+
+        // Create default speaker for guest
+        await prisma.speaker.create({
+          data: {
+            accountId: guest.id,
+            label: 'Default',
+            languageProfile: {
+              estimatedCefr: 'B1',
+              confidence: 0,
+              lastUpdated: new Date().toISOString(),
+            },
+          },
+        });
+
+        return {
+          id: guest.id,
+          email: null,
+          name: null,
+          image: null,
+          isGuest: true,
+        };
+      },
+    }),
+
+    // Google OAuth
+    ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
+      ? [
+          Google({
+            clientId: process.env.AUTH_GOOGLE_ID,
+            clientSecret: process.env.AUTH_GOOGLE_SECRET,
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      // Always allow credentials and anonymous
+      if (account?.provider === 'credentials' || account?.provider === 'anonymous') {
+        return true;
+      }
+
+      // For OAuth providers: auto-link to existing Account by email
+      if (account && user.email) {
+        const existingAccount = await prisma.account.findUnique({
+          where: { email: user.email },
+        });
+
+        if (existingAccount) {
+          // Check if this OAuth provider is already linked
+          const existingLink = await prisma.oAuthAccount.findUnique({
+            where: {
+              provider_providerAccountId: {
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+              },
+            },
+          });
+
+          if (!existingLink) {
+            // Auto-link the OAuth account to existing user
+            await prisma.oAuthAccount.create({
+              data: {
+                accountId: existingAccount.id,
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+                accessToken: account.access_token ?? null,
+                refreshToken: account.refresh_token ?? null,
+                expiresAt: account.expires_at ?? null,
+                tokenType: account.token_type ?? null,
+                scope: account.scope ?? null,
+                idToken: account.id_token ?? null,
+              },
+            });
+          }
+
+          // Update name/image if not set
+          if (!existingAccount.name || !existingAccount.image) {
+            await prisma.account.update({
+              where: { id: existingAccount.id },
+              data: {
+                name: existingAccount.name || user.name,
+                image: existingAccount.image || user.image,
+                emailVerified: existingAccount.emailVerified || new Date(),
+              },
+            });
+          }
+        }
+      }
+
+      return true;
+    },
+
+    async jwt({ token, user, account }) {
       if (user) {
-        token.id = user.id;
+        token.id = user.id as string;
+        token.isGuest = (user as { isGuest?: boolean }).isGuest ?? false;
+        token.name = user.name ?? null;
+        token.image = user.image ?? null;
+        token.email = user.email ?? null;
+      }
+      if (account) {
+        token.provider = account.provider;
       }
       return token;
     },
+
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
+        session.user.isGuest = token.isGuest as boolean | undefined;
+        session.user.name = (token.name as string | null) ?? null;
+        session.user.image = (token.image as string | null) ?? null;
+        (session.user as { email: string | null }).email = (token.email as string | null) ?? null;
       }
       return session;
     },
@@ -135,7 +260,7 @@ export async function requireAuth() {
  * Authentication result type for API routes
  */
 export type AuthResult =
-  | { authenticated: true; user: { id: string; email?: string | null } }
+  | { authenticated: true; user: { id: string; email?: string | null; isGuest?: boolean } }
   | { authenticated: false; user: null };
 
 /**
@@ -146,7 +271,7 @@ export async function checkAuth(): Promise<AuthResult> {
   if (!user || !user.id) {
     return { authenticated: false, user: null };
   }
-  return { authenticated: true, user: { id: user.id, email: user.email } };
+  return { authenticated: true, user: { id: user.id, email: user.email, isGuest: user.isGuest } };
 }
 
 /**
