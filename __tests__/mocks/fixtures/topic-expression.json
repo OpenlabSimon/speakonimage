@@ -1,0 +1,45 @@
+{
+  "type": "expression",
+  "chinesePrompt": "描述一次让你印象深刻的旅行经历。可以是国内或国外的旅行，分享你最难忘的瞬间。",
+  "guidingQuestions": [
+    "你去了哪里？为什么选择那个地方？",
+    "旅途中最让你印象深刻的是什么？",
+    "这次旅行给你带来了什么感悟？"
+  ],
+  "suggestedVocab": [
+    {
+      "word": "breathtaking",
+      "phonetic": "/ˈbrɛθˌteɪkɪŋ/",
+      "partOfSpeech": "adjective",
+      "chinese": "令人惊叹的",
+      "exampleContext": "The view from the mountain was breathtaking."
+    },
+    {
+      "word": "memorable",
+      "phonetic": "/ˈmɛmərəbl/",
+      "partOfSpeech": "adjective",
+      "chinese": "难忘的",
+      "exampleContext": "It was the most memorable trip I've ever taken."
+    },
+    {
+      "word": "explore",
+      "phonetic": "/ɪkˈsplɔːr/",
+      "partOfSpeech": "verb",
+      "chinese": "探索",
+      "exampleContext": "We explored the ancient ruins for hours."
+    }
+  ],
+  "grammarHints": [
+    {
+      "point": "Past Tense Narrative",
+      "explanation": "用过去式描述旅行经历",
+      "pattern": "Subject + past tense verb + details",
+      "example": "I visited the Great Wall and walked along it for hours."
+    }
+  ],
+  "difficultyMetadata": {
+    "targetCefr": "B1",
+    "vocabComplexity": 0.5,
+    "grammarComplexity": 0.4
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "type": "translation",
+  "chinesePrompt": "昨天我在咖啡店遇到了一个老朋友，我们聊了很久，回忆了大学时光。",
+  "difficulty": "B1",
+  "keyPoints": [
+    "表达在咖啡店的偶遇",
+    "提到与老朋友的交流",
+    "回忆过去的大学时光"
+  ],
+  "suggestedVocab": [
+    {
+      "word": "run into",
+      "phonetic": "/rʌn ˈɪntə/",
+      "partOfSpeech": "phrasal verb",
+      "chinese": "偶遇",
+      "exampleContext": "I ran into my old classmate at the mall."
+    },
+    {
+      "word": "reminisce",
+      "phonetic": "/ˌrɛmɪˈnɪs/",
+      "partOfSpeech": "verb",
+      "chinese": "回忆，追忆",
+      "exampleContext": "We reminisced about our college days."
+    },
+    {
+      "word": "catch up",
+      "phonetic": "/kætʃ ʌp/",
+      "partOfSpeech": "phrasal verb",
+      "chinese": "叙旧",
+      "exampleContext": "Let's catch up over coffee sometime."
+    }
+  ],
+  "difficultyMetadata": {
+    "targetCefr": "B1",
+    "vocabComplexity": 0.5,
+    "grammarComplexity": 0.4
+  }
+}

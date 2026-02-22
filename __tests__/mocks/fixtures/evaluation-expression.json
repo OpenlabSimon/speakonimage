@@ -1,0 +1,40 @@
+{
+  "type": "expression",
+  "relevance": {
+    "score": 88,
+    "comment": "Well-focused on the topic with relevant details"
+  },
+  "depth": {
+    "score": 75,
+    "strengths": ["Personal examples provided", "Multiple perspectives considered"],
+    "suggestions": ["Could elaborate on long-term implications"],
+    "comment": "Good depth with room for more analysis"
+  },
+  "creativity": {
+    "score": 70,
+    "highlights": ["Interesting metaphor usage"],
+    "comment": "Shows creative thinking"
+  },
+  "languageQuality": {
+    "score": 80,
+    "grammarErrors": [
+      {
+        "original": "more better",
+        "corrected": "much better",
+        "rule": "Double comparative",
+        "severity": "Medium"
+      }
+    ],
+    "vocabularyFeedback": "Good variety of vocabulary used",
+    "comment": "Solid language quality overall"
+  },
+  "overallCefrEstimate": "B1",
+  "betterExpressions": [
+    "From my perspective, the benefits far outweigh the drawbacks.",
+    "One could argue that this approach offers significant advantages."
+  ],
+  "suggestions": {
+    "immediate": "Avoid double comparatives",
+    "longTerm": "Practice expressing nuanced opinions"
+  }
+}

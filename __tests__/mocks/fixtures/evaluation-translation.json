@@ -1,0 +1,41 @@
+{
+  "type": "translation",
+  "semanticAccuracy": {
+    "score": 85,
+    "conveyedPoints": ["Expressed meeting a friend", "Mentioned the coffee shop location"],
+    "missedPoints": ["Did not convey the surprise element"],
+    "comment": "Good semantic coverage with minor omission"
+  },
+  "naturalness": {
+    "score": 78,
+    "issues": ["Slightly formal tone for casual conversation"],
+    "suggestions": ["Use 'ran into' instead of 'met'"],
+    "comment": "Generally natural expression"
+  },
+  "grammar": {
+    "score": 90,
+    "errors": [
+      {
+        "original": "I have meet",
+        "corrected": "I met",
+        "rule": "Past tense usage",
+        "severity": "Major"
+      }
+    ]
+  },
+  "vocabulary": {
+    "score": 82,
+    "goodChoices": ["unexpectedly", "acquaintance"],
+    "improvements": ["Consider using 'bumped into'"],
+    "comment": "Good vocabulary range"
+  },
+  "overallCefrEstimate": "B2",
+  "betterExpressions": [
+    "I ran into an old friend at the coffee shop yesterday.",
+    "Yesterday I bumped into a friend I hadn't seen in ages at the café."
+  ],
+  "suggestions": {
+    "immediate": "Practice past tense irregular verbs",
+    "longTerm": "Build idiomatic expression vocabulary"
+  }
+}

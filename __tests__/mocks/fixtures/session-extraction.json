@@ -1,0 +1,25 @@
+{
+  "sessionSummary": "Student practiced translation of casual conversation topics",
+  "newVocabulary": [
+    {
+      "word": "reminisce",
+      "context": "Used when describing meeting an old friend",
+      "mastery": "developing",
+      "cefrLevel": "B2"
+    }
+  ],
+  "errors": [
+    {
+      "type": "tense",
+      "userSaid": "I have meet",
+      "correction": "I met",
+      "pattern": "Present perfect vs simple past",
+      "severity": "medium",
+      "isRecurring": false
+    }
+  ],
+  "grammarPointsTouched": ["past_tense", "present_perfect"],
+  "topicsDiscussed": ["friendship", "nostalgia"],
+  "suggestedFocusNext": ["Practice irregular past tense forms", "Use more idiomatic expressions"],
+  "overallProgress": "improving"
+}
