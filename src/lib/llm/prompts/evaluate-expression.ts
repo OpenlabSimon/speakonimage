@@ -45,13 +45,25 @@ export const ExpressionEvaluationSchema = z.object({
 export type ExpressionEvaluationOutput = z.infer<typeof ExpressionEvaluationSchema>;
 
 // System prompt for expression evaluation
-export const EXPRESSION_EVALUATION_SYSTEM_PROMPT = `你是一位鼓励创意表达的英语教师。
+export function getExpressionEvaluationSystemPrompt(inputMethod: 'voice' | 'text' = 'text'): string {
+  const base = `你是一位鼓励创意表达的英语教师。
 
 你的任务是评估学生的话题表达，重点关注：
 1. **内容相关性**：表达是否围绕给定话题
 2. **内容丰富度**：观点是否充实、有深度
 3. **表达创意度**：表达是否有创意、个性
-4. **语言质量**：语法、用词的综合质量
+4. **语言质量**：语法、用词的综合质量`;
+
+  const voiceExtra = inputMethod === 'voice' ? `
+
+特别注意：这是学生的口语录音转写文本。评估时请考虑：
+- 口语中的自我纠正（如 "I think... I mean..."）是积极的学习信号
+- 口语表达的语法容忍度可以略高于书面表达
+- 关注口语特有的问题：过多的填充词、思路断裂、重复表达等
+- 口语中的句式可以更简短和碎片化，这是正常的
+- 在languageQuality评分中综合考虑口语流畅度` : '';
+
+  return base + voiceExtra + `
 
 评价原则：
 - 这是开放性表达，没有标准答案
@@ -61,6 +73,10 @@ export const EXPRESSION_EVALUATION_SYSTEM_PROMPT = `你是一位鼓励创意表�
 - 提供2-3个表达建议供学习
 
 请始终返回符合schema的有效JSON。`;
+}
+
+// Keep backward-compatible constant
+export const EXPRESSION_EVALUATION_SYSTEM_PROMPT = getExpressionEvaluationSystemPrompt('text');
 
 // Build evaluation prompt for expression
 export function buildExpressionEvaluationPrompt(
@@ -70,9 +86,11 @@ export function buildExpressionEvaluationPrompt(
   suggestedVocab: string[],
   grammarHints: string[],
   historyAttempts?: { text: string; score: number }[],
-  profileContext?: string
+  profileContext?: string,
+  inputMethod: 'voice' | 'text' = 'text'
 ): string {
-  let prompt = `评估以下话题表达：
+  const inputLabel = inputMethod === 'voice' ? '学生的英语口语表达（语音转写）' : '学生的英语表达';
+  let prompt = `评估以下话题表达${inputMethod === 'voice' ? '（口语）' : ''}：
 
 ## 话题描述
 ${chinesePrompt}
@@ -80,7 +98,7 @@ ${chinesePrompt}
 ## 引导问题
 ${guidingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
-## 学生的英语表达
+## ${inputLabel}
 ${userResponse}
 
 ## 推荐词汇（供参考）

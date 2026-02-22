@@ -30,6 +30,7 @@ interface EvaluationResultProps {
   characterId?: TeacherCharacterId;
   topicType?: string;
   chinesePrompt?: string;
+  inputMethod?: 'voice' | 'text';
 }
 
 type TabType = 'overview' | 'feedback' | 'grammar' | 'improve' | 'history';
@@ -45,6 +46,7 @@ export function EvaluationResult({
   characterId,
   topicType,
   chinesePrompt,
+  inputMethod,
 }: EvaluationResultProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -77,6 +79,7 @@ export function EvaluationResult({
         userResponse={userResponse}
         topicType={topicType}
         chinesePrompt={chinesePrompt}
+        inputMethod={inputMethod}
       />
     )}
 

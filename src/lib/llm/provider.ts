@@ -35,6 +35,7 @@ export interface LLMConfig {
   model?: string;
   maxRetries?: number;
   temperature?: number;
+  timeoutMs?: number;
 }
 
 // Error class for LLM failures

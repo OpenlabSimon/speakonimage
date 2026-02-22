@@ -7,56 +7,50 @@ import { prisma } from '@/lib/db';
  * Returns null if no meaningful data exists yet (new user).
  */
 export async function buildProfileContext(speakerId: string): Promise<string | null> {
-  const speaker = await prisma.speaker.findUnique({
-    where: { id: speakerId },
-    select: { languageProfile: true },
-  });
+  // Run all independent queries in parallel
+  const [speaker, grammarErrors, weakVocab] = await Promise.all([
+    prisma.speaker.findUnique({
+      where: { id: speakerId },
+      select: { languageProfile: true },
+    }),
+    prisma.grammarError.groupBy({
+      by: ['errorPattern'],
+      where: { speakerId },
+      _count: { errorPattern: true },
+      orderBy: { _count: { errorPattern: 'desc' } },
+      take: 10,
+    }),
+    prisma.vocabularyUsage.findMany({
+      where: {
+        speakerId,
+        usedCorrectly: false,
+      },
+      select: { word: true },
+      distinct: ['word'],
+      take: 15,
+    }),
+  ]);
 
   if (!speaker) return null;
 
   const profile = speaker.languageProfile as Record<string, unknown> | null;
 
-  // Query top 10 most frequent grammar error patterns for this speaker
-  const grammarErrors = await prisma.grammarError.groupBy({
-    by: ['errorPattern'],
-    where: { speakerId },
-    _count: { errorPattern: true },
-    orderBy: { _count: { errorPattern: 'desc' } },
-    take: 10,
-  });
-
-  // For each error pattern, get a recent example
-  const errorExamples: Array<{
-    pattern: string;
-    count: number;
-    original?: string;
-    corrected?: string;
-  }> = [];
-
-  for (const err of grammarErrors) {
-    const example = await prisma.grammarError.findFirst({
-      where: { speakerId, errorPattern: err.errorPattern },
-      orderBy: { createdAt: 'desc' },
-      select: { originalText: true, correctedText: true },
-    });
-    errorExamples.push({
-      pattern: err.errorPattern,
-      count: err._count.errorPattern,
-      original: example?.originalText || undefined,
-      corrected: example?.correctedText || undefined,
-    });
-  }
-
-  // Query weak vocabulary (used incorrectly or low usage)
-  const weakVocab = await prisma.vocabularyUsage.findMany({
-    where: {
-      speakerId,
-      usedCorrectly: false,
-    },
-    select: { word: true },
-    distinct: ['word'],
-    take: 15,
-  });
+  // Fetch recent examples for all error patterns in parallel
+  const errorExamples = await Promise.all(
+    grammarErrors.map(async (err) => {
+      const example = await prisma.grammarError.findFirst({
+        where: { speakerId, errorPattern: err.errorPattern },
+        orderBy: { createdAt: 'desc' },
+        select: { originalText: true, correctedText: true },
+      });
+      return {
+        pattern: err.errorPattern,
+        count: err._count.errorPattern,
+        original: example?.originalText || undefined,
+        corrected: example?.correctedText || undefined,
+      };
+    })
+  );
 
   // If no data at all, return null
   if (errorExamples.length === 0 && weakVocab.length === 0 && !profile) {

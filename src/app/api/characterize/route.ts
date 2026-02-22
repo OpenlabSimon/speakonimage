@@ -14,12 +14,13 @@ interface CharacterizeRequest {
   userResponse: string;
   topicType: string;
   chinesePrompt: string;
+  inputMethod?: 'voice' | 'text';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CharacterizeRequest = await request.json();
-    const { characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt } = body;
+    const { characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod } = body;
 
     // Validate required fields
     if (!characterId || !isValidCharacterId(characterId)) {
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       userResponse,
       topicType,
       chinesePrompt,
+      inputMethod,
     });
 
     const feedback = await llm.generateJSON(

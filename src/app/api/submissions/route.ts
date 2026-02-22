@@ -2,22 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { checkAuth, unauthorizedResponse } from '@/lib/auth';
-import { getLLMProvider } from '@/lib/llm';
-import {
-  TranslationEvaluationSchema,
-  TRANSLATION_EVALUATION_SYSTEM_PROMPT,
-  buildTranslationEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-translation';
-import {
-  ExpressionEvaluationSchema,
-  EXPRESSION_EVALUATION_SYSTEM_PROMPT,
-  buildExpressionEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-expression';
-import {
-  getOrCreateSessionForTopic,
-  addMessage,
-} from '@/lib/memory/ConversationManager';
-import { buildProfileContext } from '@/lib/profile/ProfileInjector';
+import { evaluateResponse, getProfileContext, persistSubmission } from '@/lib/evaluation/evaluateSubmission';
 import type { ApiResponse } from '@/types';
 
 // Request body schema
@@ -74,7 +59,6 @@ export async function POST(request: NextRequest) {
         return unauthorizedResponse('Authentication required to submit to a saved topic');
       }
 
-      // Verify the topic belongs to this user
       const topic = await prisma.topic.findUnique({
         where: { id: topicId },
         select: { accountId: true },
@@ -95,211 +79,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get LLM provider
-    const llm = getLLMProvider();
-
-    // Extract vocab words for prompt
-    const vocabWords = topicContent.suggestedVocab.map(v => v.word);
-
     // Build profile context for personalized feedback
-    let profileContext: string | null = null;
-    if (authResult.authenticated) {
-      const speaker = await prisma.speaker.findFirst({
-        where: { accountId: authResult.user.id },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true },
-      });
-      if (speaker) {
-        profileContext = await buildProfileContext(speaker.id);
-      }
-    }
+    const profileContext = authResult.authenticated
+      ? await getProfileContext(authResult.user.id)
+      : null;
 
-    let evaluation;
+    // Evaluate
+    const { evaluation, overallScore } = await evaluateResponse({
+      topicType,
+      chinesePrompt: topicContent.chinesePrompt,
+      keyPoints: topicContent.keyPoints,
+      guidingQuestions: topicContent.guidingQuestions,
+      suggestedVocab: topicContent.suggestedVocab,
+      grammarHints: topicContent.grammarHints,
+      userResponse,
+      inputMethod,
+      historyAttempts,
+      profileContext,
+    });
 
-    if (topicType === 'translation') {
-      // Build translation evaluation prompt
-      const prompt = buildTranslationEvaluationPrompt(
-        topicContent.chinesePrompt,
-        topicContent.keyPoints || [],
-        userResponse,
-        vocabWords,
-        historyAttempts,
-        profileContext || undefined
-      );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        TranslationEvaluationSchema,
-        TRANSLATION_EVALUATION_SYSTEM_PROMPT
-      );
-    } else {
-      // Build expression evaluation prompt
-      const grammarPoints = topicContent.grammarHints?.map(g => g.point) || [];
-      const prompt = buildExpressionEvaluationPrompt(
-        topicContent.chinesePrompt,
-        topicContent.guidingQuestions || [],
-        userResponse,
-        vocabWords,
-        grammarPoints,
-        historyAttempts,
-        profileContext || undefined
-      );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        ExpressionEvaluationSchema,
-        EXPRESSION_EVALUATION_SYSTEM_PROMPT
-      );
-    }
-
-    // Calculate overall score for response
-    let overallScore: number;
-    if (evaluation.type === 'translation') {
-      overallScore = Math.round(
-        (evaluation.semanticAccuracy.score * 0.4 +
-          evaluation.naturalness.score * 0.2 +
-          evaluation.grammar.score * 0.2 +
-          evaluation.vocabulary.score * 0.2)
-      );
-    } else {
-      overallScore = Math.round(
-        (evaluation.relevance.score * 0.25 +
-          evaluation.depth.score * 0.25 +
-          evaluation.creativity.score * 0.25 +
-          evaluation.languageQuality.score * 0.25)
-      );
-    }
-
-    // Save to database if user is authenticated and we have a topicId
+    // Persist to database if authenticated
     let submissionId: string | undefined;
     let activeSessionId: string | undefined = sessionId;
 
     if (authResult.authenticated && topicId) {
-      // Get attempt number (count previous submissions for this topic)
-      const previousAttempts = await prisma.submission.count({
-        where: {
-          topicId,
-          accountId: authResult.user.id,
-        },
+      const result = await persistSubmission({
+        topicId,
+        accountId: authResult.user.id,
+        inputMethod,
+        userResponse,
+        evaluation,
+        overallScore,
+        topicType,
+        suggestedVocab: topicContent.suggestedVocab,
+        sessionId,
       });
-
-      // Get default speaker for this user
-      const speaker = await prisma.speaker.findFirst({
-        where: { accountId: authResult.user.id },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      // Create submission
-      const submission = await prisma.submission.create({
-        data: {
-          topicId,
-          accountId: authResult.user.id,
-          speakerId: speaker?.id,
-          attemptNumber: previousAttempts + 1,
-          inputMethod,
-          transcribedText: userResponse,
-          evaluation: evaluation as object,
-          difficultyAssessment: {
-            overallScore,
-            estimatedCefr: evaluation.overallCefrEstimate,
-          },
-        },
-      });
-
-      submissionId = submission.id;
-
-      // Extract and save grammar errors
-      const grammarErrors = evaluation.type === 'translation'
-        ? evaluation.grammar.errors
-        : evaluation.languageQuality.grammarErrors;
-
-      if (grammarErrors && grammarErrors.length > 0) {
-        await prisma.grammarError.createMany({
-          data: grammarErrors.map(error => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            errorPattern: error.rule,
-            originalText: error.original,
-            correctedText: error.corrected,
-            severity: error.severity,
-          })),
-        });
-      }
-
-      // Extract and save vocabulary usage (words from suggested vocab that were used)
-      const usedVocabWords = topicContent.suggestedVocab.filter(vocab =>
-        userResponse.toLowerCase().includes(vocab.word.toLowerCase())
-      );
-
-      if (usedVocabWords.length > 0) {
-        await prisma.vocabularyUsage.createMany({
-          data: usedVocabWords.map(vocab => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            word: vocab.word,
-            wasFromHint: true,
-            usedCorrectly: true, // Simplified - could be enhanced with LLM check
-            cefrLevel: evaluation.overallCefrEstimate,
-          })),
-        });
-      }
-
-      // Update speaker's last active time
-      if (speaker) {
-        await prisma.speaker.update({
-          where: { id: speaker.id },
-          data: { lastActiveAt: new Date() },
-        });
-      }
-
-      // Add messages to chat session for memory system
-      if (!activeSessionId) {
-        // Get or create a session for this topic
-        try {
-          const session = await getOrCreateSessionForTopic(
-            authResult.user.id,
-            topicId,
-            speaker?.id
-          );
-          activeSessionId = session.id;
-        } catch (err) {
-          console.error('Failed to create session:', err);
-        }
-      }
-
-      if (activeSessionId) {
-        try {
-          // Add user message
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'user',
-            content: userResponse,
-            contentType: 'text',
-            metadata: {
-              inputMethod,
-            },
-          });
-
-          // Add assistant evaluation message (summarized)
-          const evaluationSummary = evaluation.type === 'translation'
-            ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
-            : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
-
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'assistant',
-            content: evaluationSummary,
-            contentType: 'evaluation',
-            metadata: {
-              overallScore,
-              estimatedCefr: evaluation.overallCefrEstimate,
-              evaluationType: topicType,
-            },
-          });
-        } catch (err) {
-          console.error('Failed to add messages to session:', err);
-        }
-      }
+      submissionId = result.submissionId;
+      activeSessionId = result.sessionId;
     }
 
     return NextResponse.json<ApiResponse<{

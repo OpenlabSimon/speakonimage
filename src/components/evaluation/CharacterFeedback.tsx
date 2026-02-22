@@ -14,6 +14,7 @@ interface CharacterFeedbackProps {
   userResponse: string;
   topicType: string;
   chinesePrompt: string;
+  inputMethod?: 'voice' | 'text';
 }
 
 export function CharacterFeedback({
@@ -23,6 +24,7 @@ export function CharacterFeedback({
   userResponse,
   topicType,
   chinesePrompt,
+  inputMethod = 'text',
 }: CharacterFeedbackProps) {
   const [feedback, setFeedback] = useState<CharacterFeedbackType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,6 +47,7 @@ export function CharacterFeedback({
           userResponse,
           topicType,
           chinesePrompt,
+          inputMethod,
         }),
       });
 
@@ -61,7 +64,7 @@ export function CharacterFeedback({
     } finally {
       setIsLoading(false);
     }
-  }, [characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt]);
+  }, [characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod]);
 
   useEffect(() => {
     fetchFeedback();

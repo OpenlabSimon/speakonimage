@@ -56,13 +56,25 @@ export const TranslationEvaluationSchema = z.object({
 export type TranslationEvaluationOutput = z.infer<typeof TranslationEvaluationSchema>;
 
 // System prompt for translation evaluation
-export const TRANSLATION_EVALUATION_SYSTEM_PROMPT = `你是一位专注于语义传达的英语教师。
+export function getTranslationEvaluationSystemPrompt(inputMethod: 'voice' | 'text' = 'text'): string {
+  const base = `你是一位专注于语义传达的英语教师。
 
 你的任务是评估学生的中译英翻译，重点关注：
 1. **语义传达准确性**：学生是否准确传达了中文原意（不要求逐字翻译）
 2. **表达自然度**：英语是否地道，是否有中式英语痕迹
 3. **语法正确性**：是否有语法错误
-4. **用词质量**：用词是否恰当
+4. **用词质量**：用词是否恰当`;
+
+  const voiceExtra = inputMethod === 'voice' ? `
+5. **口语流畅度**：作为口语表达，是否流畅自然
+
+特别注意：这是学生的口语录音转写文本。评估时请考虑：
+- 口语中的自我纠正（如 "I go... went"）是积极的学习信号，不应过度扣分
+- 口语中的语法容忍度可以略高于书面表达
+- 关注口语特有的问题：填充词过多、句子断裂、长停顿重启等
+- 在naturalness评分中反映口语流畅度` : '';
+
+  return base + voiceExtra + `
 
 评价原则：
 - 同一中文可以有多种正确的英语表达，全部认可
@@ -72,6 +84,10 @@ export const TRANSLATION_EVALUATION_SYSTEM_PROMPT = `你是一位专注于语义
 - 提供2-3个更好的表达方式供学习
 
 请始终返回符合schema的有效JSON。`;
+}
+
+// Keep backward-compatible constant
+export const TRANSLATION_EVALUATION_SYSTEM_PROMPT = getTranslationEvaluationSystemPrompt('text');
 
 // Build evaluation prompt for translation
 export function buildTranslationEvaluationPrompt(
@@ -80,9 +96,11 @@ export function buildTranslationEvaluationPrompt(
   userResponse: string,
   suggestedVocab: string[],
   historyAttempts?: { text: string; score: number }[],
-  profileContext?: string
+  profileContext?: string,
+  inputMethod: 'voice' | 'text' = 'text'
 ): string {
-  let prompt = `评估以下中译英翻译：
+  const inputLabel = inputMethod === 'voice' ? '学生的英语口语表达（语音转写）' : '学生的英语表达';
+  let prompt = `评估以下中译英翻译${inputMethod === 'voice' ? '（口语）' : ''}：
 
 ## 中文原文
 ${chinesePrompt}
@@ -90,7 +108,7 @@ ${chinesePrompt}
 ## 翻译要点（用于评估语义传达）
 ${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
-## 学生的英语表达
+## ${inputLabel}
 ${userResponse}
 
 ## 推荐词汇（供参考）

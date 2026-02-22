@@ -371,6 +371,7 @@ export default function TopicPracticePage() {
             characterId={characterId}
             topicType={topicData.type}
             chinesePrompt={topicData.chinesePrompt}
+            inputMethod={currentEvaluation.inputMethod as 'voice' | 'text'}
           />
 
           {/* Previous Recordings */}

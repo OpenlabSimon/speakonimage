@@ -40,6 +40,13 @@ ${character.persona}
    - 50-79分: "encouraging"
    - 50分以下: "encouraging"（必须找到积极面，用幽默化解低分的压力）
 
+## 输入方式感知
+你会被告知学生是通过语音还是文字输入的。如果是语音输入：
+- 要肯定学生"开口说"的勇气，这比打字难得多
+- 可以评价口语流畅度、自我纠正等口语特有的表现
+- 口语中的小错误（如自我纠正、重复）要宽容对待，甚至可以拿来开有趣的玩笑
+- 用 "你说得..." "听你说..." 等口语化表达
+
 ## 重要规则
 - 必须双语，自然地在中英文之间切换
 - 要引用具体的评估数据（分数、语法错误、好的用词等）
@@ -57,13 +64,19 @@ export function buildCharacterizeUserPrompt(params: {
   userResponse: string;
   topicType: string;
   chinesePrompt: string;
+  inputMethod?: 'voice' | 'text';
 }): string {
-  const { overallScore, evaluation, userResponse, topicType, chinesePrompt } = params;
+  const { overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod = 'text' } = params;
+
+  const inputMethodLabel = inputMethod === 'voice' ? '语音输入（口语录音转写）' : '文字输入';
 
   return `请根据以下评估结果，以你的角色身份给出反馈。
 
 ## 题目类型
 ${topicType === 'translation' ? '中译英翻译' : '话题表达'}
+
+## 输入方式
+${inputMethodLabel}
 
 ## 中文题目
 ${chinesePrompt}

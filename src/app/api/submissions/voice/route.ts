@@ -3,22 +3,7 @@ import { put } from '@vercel/blob';
 import { prisma } from '@/lib/db';
 import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
-import { getLLMProvider } from '@/lib/llm';
-import {
-  TranslationEvaluationSchema,
-  TRANSLATION_EVALUATION_SYSTEM_PROMPT,
-  buildTranslationEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-translation';
-import {
-  ExpressionEvaluationSchema,
-  EXPRESSION_EVALUATION_SYSTEM_PROMPT,
-  buildExpressionEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-expression';
-import {
-  getOrCreateSessionForTopic,
-  addMessage,
-} from '@/lib/memory/ConversationManager';
-import { buildProfileContext } from '@/lib/profile/ProfileInjector';
+import { evaluateResponse, getProfileContext, persistSubmission } from '@/lib/evaluation/evaluateSubmission';
 import type { ApiResponse } from '@/types';
 
 /**
@@ -79,7 +64,6 @@ export async function POST(request: NextRequest) {
         return unauthorizedResponse('Authentication required to submit to a saved topic');
       }
 
-      // Verify the topic belongs to this user
       const topic = await prisma.topic.findUnique({
         where: { id: topicId },
         select: { accountId: true },
@@ -129,7 +113,6 @@ export async function POST(request: NextRequest) {
         console.log('Audio stored:', audioUrl);
       } catch (storageError) {
         console.error('Audio storage failed (continuing without storage):', storageError);
-        // Continue without storage - don't fail the request
       }
     }
 
@@ -189,206 +172,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3: Evaluate the transcription
-    const llm = getLLMProvider();
-    const vocabWords = topicData.suggestedVocab?.map((v: { word: string }) => v.word) || [];
+    const profileContext = authResult.authenticated
+      ? await getProfileContext(authResult.user.id)
+      : null;
 
-    // Build profile context for personalized feedback
-    let profileContext: string | null = null;
-    if (authResult.authenticated) {
-      const speaker = await prisma.speaker.findFirst({
-        where: { accountId: authResult.user.id },
-        orderBy: { createdAt: 'asc' },
-        select: { id: true },
-      });
-      if (speaker) {
-        profileContext = await buildProfileContext(speaker.id);
-      }
-    }
+    const suggestedVocab = topicData.suggestedVocab || [];
 
-    let evaluation;
-
-    if (topicData.type === 'translation') {
-      const prompt = buildTranslationEvaluationPrompt(
-        topicData.chinesePrompt,
-        topicData.keyPoints || [],
-        transcribedText,
-        vocabWords,
-        undefined, // historyAttempts
-        profileContext || undefined
-      );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        TranslationEvaluationSchema,
-        TRANSLATION_EVALUATION_SYSTEM_PROMPT
-      );
-    } else {
-      const grammarPoints = topicData.grammarHints?.map((g: { point: string }) => g.point) || [];
-      const prompt = buildExpressionEvaluationPrompt(
-        topicData.chinesePrompt,
-        topicData.guidingQuestions || [],
-        transcribedText,
-        vocabWords,
-        grammarPoints,
-        undefined, // historyAttempts
-        profileContext || undefined
-      );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        ExpressionEvaluationSchema,
-        EXPRESSION_EVALUATION_SYSTEM_PROMPT
-      );
-    }
-
-    // Calculate overall score
-    let overallScore: number;
-    if (evaluation.type === 'translation') {
-      overallScore = Math.round(
-        evaluation.semanticAccuracy.score * 0.4 +
-        evaluation.naturalness.score * 0.2 +
-        evaluation.grammar.score * 0.2 +
-        evaluation.vocabulary.score * 0.2
-      );
-    } else {
-      overallScore = Math.round(
-        evaluation.relevance.score * 0.25 +
-        evaluation.depth.score * 0.25 +
-        evaluation.creativity.score * 0.25 +
-        evaluation.languageQuality.score * 0.25
-      );
-    }
+    const { evaluation, overallScore } = await evaluateResponse({
+      topicType: topicData.type,
+      chinesePrompt: topicData.chinesePrompt,
+      keyPoints: topicData.keyPoints,
+      guidingQuestions: topicData.guidingQuestions,
+      suggestedVocab,
+      grammarHints: topicData.grammarHints,
+      userResponse: transcribedText,
+      inputMethod: 'voice',
+      profileContext,
+    });
 
     // Step 4: Save to database if user is authenticated and we have a topicId
     let submissionId: string | undefined;
     if (authResult.authenticated && topicId) {
-      // Get attempt number (count previous submissions for this topic)
-      const previousAttempts = await prisma.submission.count({
-        where: {
-          topicId,
-          accountId: authResult.user.id,
-        },
+      const result = await persistSubmission({
+        topicId,
+        accountId: authResult.user.id,
+        inputMethod: 'voice',
+        userResponse: transcribedText,
+        audioUrl,
+        evaluation,
+        overallScore,
+        topicType: topicData.type,
+        suggestedVocab,
+        sessionId: sessionId || undefined,
       });
-
-      // Get default speaker for this user
-      const speaker = await prisma.speaker.findFirst({
-        where: { accountId: authResult.user.id },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      // Create submission
-      const submission = await prisma.submission.create({
-        data: {
-          topicId,
-          accountId: authResult.user.id,
-          speakerId: speaker?.id,
-          attemptNumber: previousAttempts + 1,
-          inputMethod: 'voice',
-          rawAudioUrl: audioUrl,
-          transcribedText,
-          evaluation: evaluation as object,
-          difficultyAssessment: {
-            overallScore,
-            estimatedCefr: evaluation.overallCefrEstimate,
-          },
-        },
-      });
-
-      submissionId = submission.id;
-
-      // Extract and save grammar errors
-      const grammarErrors = evaluation.type === 'translation'
-        ? evaluation.grammar.errors
-        : evaluation.languageQuality.grammarErrors;
-
-      if (grammarErrors && grammarErrors.length > 0) {
-        await prisma.grammarError.createMany({
-          data: grammarErrors.map(error => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            errorPattern: error.rule,
-            originalText: error.original,
-            correctedText: error.corrected,
-            severity: error.severity,
-          })),
-        });
-      }
-
-      // Extract and save vocabulary usage (words from suggested vocab that were used)
-      const suggestedVocab = topicData.suggestedVocab || [];
-      const usedVocabWords = suggestedVocab.filter((vocab: { word: string }) =>
-        transcribedText.toLowerCase().includes(vocab.word.toLowerCase())
-      );
-
-      if (usedVocabWords.length > 0) {
-        await prisma.vocabularyUsage.createMany({
-          data: usedVocabWords.map((vocab: { word: string }) => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            word: vocab.word,
-            wasFromHint: true,
-            usedCorrectly: true,
-            cefrLevel: evaluation.overallCefrEstimate,
-          })),
-        });
-      }
-
-      // Update speaker's last active time
-      if (speaker) {
-        await prisma.speaker.update({
-          where: { id: speaker.id },
-          data: { lastActiveAt: new Date() },
-        });
-      }
-
-      // Add messages to chat session for memory system
-      let activeSessionId: string | undefined = sessionId || undefined;
-
-      if (!activeSessionId && topicId) {
-        try {
-          const session = await getOrCreateSessionForTopic(
-            authResult.user.id,
-            topicId,
-            speaker?.id
-          );
-          activeSessionId = session.id;
-        } catch (err) {
-          console.error('Failed to create session:', err);
-        }
-      }
-
-      if (activeSessionId) {
-        try {
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'user',
-            content: transcribedText,
-            contentType: 'text',
-            metadata: {
-              inputMethod: 'voice',
-              audioUrl,
-            },
-          });
-
-          const evaluationSummary = evaluation.type === 'translation'
-            ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
-            : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
-
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'assistant',
-            content: evaluationSummary,
-            contentType: 'evaluation',
-            metadata: {
-              overallScore,
-              estimatedCefr: evaluation.overallCefrEstimate,
-              evaluationType: topicData.type,
-            },
-          });
-        } catch (err) {
-          console.error('Failed to add messages to session:', err);
-        }
-      }
+      submissionId = result.submissionId;
     }
 
     return NextResponse.json<ApiResponse<{

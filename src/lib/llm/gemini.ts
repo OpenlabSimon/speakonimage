@@ -16,6 +16,7 @@ export class GeminiProvider implements LLMProvider {
   private model: string;
   private maxRetries: number;
   private temperature: number;
+  private timeoutMs: number;
 
   readonly name = 'Gemini';
 
@@ -27,6 +28,7 @@ export class GeminiProvider implements LLMProvider {
     this.model = config.model || 'gemini-3-pro-preview';
     this.maxRetries = config.maxRetries ?? 1;
     this.temperature = config.temperature ?? 0.7;
+    this.timeoutMs = config.timeoutMs ?? 30000;
   }
 
   async generateJSON<T>(
@@ -46,12 +48,23 @@ export class GeminiProvider implements LLMProvider {
         content: prompt + '\n\nRespond with valid JSON only, no markdown formatting.',
       });
 
-      const completion = await this.client.chat.completions.create({
-        model: this.model,
-        messages,
-        temperature: this.temperature,
-        response_format: { type: 'json_object' },
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+      let completion;
+      try {
+        completion = await this.client.chat.completions.create(
+          {
+            model: this.model,
+            messages,
+            temperature: this.temperature,
+            response_format: { type: 'json_object' },
+          },
+          { signal: controller.signal }
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
 
       const text = completion.choices[0]?.message?.content || '';
 
@@ -95,11 +108,22 @@ export class GeminiProvider implements LLMProvider {
 
     messages.push({ role: 'user', content: prompt });
 
-    const completion = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-      temperature: this.temperature,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    let completion;
+    try {
+      completion = await this.client.chat.completions.create(
+        {
+          model: this.model,
+          messages,
+          temperature: this.temperature,
+        },
+        { signal: controller.signal }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
 
     return completion.choices[0]?.message?.content || '';
   }
