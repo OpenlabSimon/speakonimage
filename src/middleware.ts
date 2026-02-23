@@ -1,27 +1,11 @@
-import { auth } from '@/lib/auth';
-import { NextResponse } from 'next/server';
+import NextAuth from 'next-auth';
+import { authConfig } from '@/lib/auth.config';
 
-export default auth((req) => {
-  const { pathname } = req.nextUrl;
+// Use the Edge-safe auth config (no prisma, no bcryptjs).
+// The `authorized` callback in authConfig handles the auth checks.
+const { auth } = NextAuth(authConfig);
 
-  // If user is not authenticated, redirect to login
-  if (!req.auth) {
-    // For API routes, return 401
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    // For pages, redirect to login
-    const loginUrl = new URL('/auth/login', req.url);
-    loginUrl.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return NextResponse.next();
-});
+export default auth;
 
 export const config = {
   matcher: [

@@ -1,11 +1,12 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import Google from 'next-auth/providers/google';
 import { compare, hash } from 'bcryptjs';
 import { prisma } from '@/lib/db';
 import { PrismaAdapter } from '@/lib/auth/adapter';
+import { authConfig } from './auth.config';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  ...authConfig,
   adapter: PrismaAdapter(),
   providers: [
     // Email/password login + register
@@ -134,18 +135,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
 
-    // Google OAuth
-    ...(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET
-      ? [
-          Google({
-            clientId: process.env.AUTH_GOOGLE_ID,
-            clientSecret: process.env.AUTH_GOOGLE_SECRET,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
+    // Google OAuth — also in authConfig for Edge, repeated here to merge
+    ...authConfig.providers,
   ],
   callbacks: {
+    ...authConfig.callbacks,
     async signIn({ user, account }) {
       // Always allow credentials and anonymous
       if (account?.provider === 'credentials' || account?.provider === 'anonymous') {
@@ -202,38 +196,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       return true;
     },
-
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.id = user.id as string;
-        token.isGuest = (user as { isGuest?: boolean }).isGuest ?? false;
-        token.name = user.name ?? null;
-        token.image = user.image ?? null;
-        token.email = user.email ?? null;
-      }
-      if (account) {
-        token.provider = account.provider;
-      }
-      return token;
-    },
-
-    async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id as string;
-        session.user.isGuest = token.isGuest as boolean | undefined;
-        session.user.name = (token.name as string | null) ?? null;
-        session.user.image = (token.image as string | null) ?? null;
-        (session.user as { email: string | null }).email = (token.email as string | null) ?? null;
-      }
-      return session;
-    },
-  },
-  pages: {
-    signIn: '/auth/login',
-    error: '/auth/error',
-  },
-  session: {
-    strategy: 'jwt',
   },
 });
 
