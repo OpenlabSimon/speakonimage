@@ -98,7 +98,7 @@ export function VoiceRecorder({
     }
   };
 
-  // Submit voice for transcription + evaluation in one step
+  // Submit voice for transcription + streaming evaluation via SSE
   const handleSubmitVoice = async (blob: Blob) => {
     setProcessing(true);
     setApiError(null);
@@ -106,7 +106,6 @@ export function VoiceRecorder({
 
     try {
       // Try to convert webm/opus to WAV for Azure compatibility
-      // If conversion fails, use original format
       let audioToSend: Blob = blob;
       try {
         const wavBlob = await convertToWav(blob);
@@ -114,7 +113,6 @@ export function VoiceRecorder({
         console.log('Converted to WAV:', wavBlob.size, 'bytes');
       } catch (conversionError) {
         console.warn('WAV conversion failed, using original webm:', conversionError);
-        // Continue with original blob
       }
 
       setProcessingStep('上传音频...');
@@ -129,37 +127,91 @@ export function VoiceRecorder({
         formData.append('sessionId', sessionId);
       }
 
-      setProcessingStep('转写并评估中...');
+      setProcessingStep('转写中...');
 
       const response = await fetch('/api/submissions/voice', {
         method: 'POST',
         body: formData,
       });
 
-      const result = await response.json();
-      console.log('Voice API response:', result);
-
-      if (result.success) {
-        if (result.data.status === 'no_match') {
+      // Handle non-streaming error responses
+      if (!response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const result = await response.json();
+        if (result.success && result.data?.status === 'no_match') {
           setApiError('未检测到语音，请重试。');
           onError?.('未检测到语音，请重试。');
           return;
         }
+        throw new Error(result.error || '语音提交失败');
+      }
 
-        // Show transcription locally
-        setTranscription(result.data.transcription);
+      // Check if response is JSON (non-streaming: no_match, skipEvaluation)
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const result = await response.json();
+        if (result.success) {
+          if (result.data.status === 'no_match') {
+            setApiError('未检测到语音，请重试。');
+            onError?.('未检测到语音，请重试。');
+            return;
+          }
+          setTranscription(result.data.transcription);
+          onTranscriptionAndEvaluation({
+            transcription: result.data.transcription,
+            audioUrl: result.data.audioUrl,
+            evaluation: result.data.evaluation,
+            overallScore: result.data.overallScore,
+          });
+        } else {
+          throw new Error(result.error || '语音提交失败');
+        }
+        return;
+      }
 
-        // Return both transcription and evaluation to parent
-        onTranscriptionAndEvaluation({
-          transcription: result.data.transcription,
-          audioUrl: result.data.audioUrl,
-          evaluation: result.data.evaluation,
-          overallScore: result.data.overallScore,
-        });
-      } else {
-        const errorMsg = result.error || '语音提交失败';
-        setApiError(errorMsg);
-        onError?.(errorMsg);
+      // Read SSE stream
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (!payload) continue;
+
+          try {
+            const event = JSON.parse(payload);
+
+            if (event.type === 'transcription') {
+              // Show transcription immediately
+              setTranscription(event.transcription);
+              setProcessingStep('评估中...');
+            } else if (event.type === 'delta') {
+              // LLM is generating — could show streaming scores here
+            } else if (event.type === 'done') {
+              // Final validated result
+              onTranscriptionAndEvaluation({
+                transcription: event.data.transcription,
+                audioUrl: event.data.audioUrl,
+                evaluation: event.data.evaluation,
+                overallScore: event.data.overallScore,
+              });
+            } else if (event.type === 'error') {
+              throw new Error(event.error);
+            }
+          } catch (parseErr) {
+            if (payload.includes('"type":"error"')) throw parseErr;
+          }
+        }
       }
     } catch (err) {
       console.error('Voice submission error:', err);

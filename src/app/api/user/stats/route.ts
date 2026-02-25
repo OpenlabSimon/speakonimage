@@ -71,19 +71,20 @@ export async function GET() {
 
     // Calculate average score from recent submissions
     const scores = recentSubmissions
-      .map(s => (s.difficultyAssessment as { overallScore?: number } | null)?.overallScore)
-      .filter((s): s is number => typeof s === 'number');
+      .map((s: { difficultyAssessment: unknown }) => (s.difficultyAssessment as { overallScore?: number } | null)?.overallScore)
+      .filter((s: number | undefined): s is number => typeof s === 'number');
     const averageScore = scores.length > 0
-      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+      ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
       : null;
 
     // Count by topic type
-    const translationCount = recentSubmissions.filter(s => s.topic.type === 'translation').length;
-    const expressionCount = recentSubmissions.filter(s => s.topic.type === 'expression').length;
+    type RecentSubmission = typeof recentSubmissions[number];
+    const translationCount = recentSubmissions.filter((s: RecentSubmission) => s.topic.type === 'translation').length;
+    const expressionCount = recentSubmissions.filter((s: RecentSubmission) => s.topic.type === 'expression').length;
 
     // Count by input method
-    const voiceCount = recentSubmissions.filter(s => s.inputMethod === 'voice').length;
-    const textCount = recentSubmissions.filter(s => s.inputMethod === 'text').length;
+    const voiceCount = recentSubmissions.filter((s: RecentSubmission) => s.inputMethod === 'voice').length;
+    const textCount = recentSubmissions.filter((s: RecentSubmission) => s.inputMethod === 'text').length;
 
     return NextResponse.json<ApiResponse<{
       totalTopics: number;
@@ -106,7 +107,7 @@ export async function GET() {
         totalSubmissions,
         averageScore,
         recentScores: scores,
-        topGrammarErrors: grammarErrorStats.map(e => ({
+        topGrammarErrors: grammarErrorStats.map((e: typeof grammarErrorStats[number]) => ({
           pattern: e.errorPattern,
           count: e._count.errorPattern,
         })),

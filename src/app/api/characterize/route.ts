@@ -47,15 +47,45 @@ export async function POST(request: NextRequest) {
       chinesePrompt,
     });
 
-    const feedback = await llm.generateJSON(
+    // Stream JSON generation — send deltas as SSE, validated result at end
+    const stream = llm.streamJSON(
       userPrompt,
       CharacterFeedbackSchema,
       systemPrompt
     );
 
-    return NextResponse.json({
-      success: true,
-      data: feedback,
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of stream) {
+            if (event.type === 'delta') {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: 'delta', text: event.text })}\n\n`)
+              );
+            } else if (event.type === 'done') {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: 'done', data: event.data })}\n\n`)
+              );
+            }
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Stream error';
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`)
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   } catch (error) {
     console.error('Characterize error:', error);

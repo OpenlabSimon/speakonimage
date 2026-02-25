@@ -66,6 +66,7 @@ export default function TopicPracticePage() {
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
   const [userResponse, setUserResponse] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [streamingScores, setStreamingScores] = useState<Record<string, number> | null>(null);
   const [currentEvaluation, setCurrentEvaluation] =
     useState<EvaluationData | null>(null);
   const [attempts, setAttempts] = useState<AttemptData[]>([]);
@@ -209,12 +210,78 @@ export default function TopicPracticePage() {
     }
   };
 
-  // Handle text submission
+  // Parse SSE stream and extract scores from partial JSON as they arrive
+  const readSSEStream = async (
+    response: Response,
+    onPartialScores: (scores: Record<string, number>) => void,
+  ): Promise<{ evaluation: TranslationEvaluationScores | ExpressionEvaluationScores; overallScore: number; inputMethod: string }> => {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response stream');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let rawJson = '';
+
+    // Score patterns to extract from partial JSON
+    const scorePatterns = [
+      { key: 'semanticAccuracy', pattern: /"semanticAccuracy"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'naturalness', pattern: /"naturalness"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'grammar', pattern: /"grammar"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'vocabulary', pattern: /"vocabulary"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'relevance', pattern: /"relevance"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'depth', pattern: /"depth"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'creativity', pattern: /"creativity"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+      { key: 'languageQuality', pattern: /"languageQuality"\s*:\s*\{[^}]*"score"\s*:\s*(\d+)/ },
+    ];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6);
+        if (!payload) continue;
+
+        try {
+          const event = JSON.parse(payload);
+
+          if (event.type === 'delta') {
+            rawJson += event.text;
+            // Extract scores from partial JSON
+            const scores: Record<string, number> = {};
+            for (const { key, pattern } of scorePatterns) {
+              const match = rawJson.match(pattern);
+              if (match) scores[key] = parseInt(match[1], 10);
+            }
+            if (Object.keys(scores).length > 0) {
+              onPartialScores(scores);
+            }
+          } else if (event.type === 'done') {
+            return event.data;
+          } else if (event.type === 'error') {
+            throw new Error(event.error);
+          }
+        } catch (parseErr) {
+          if (payload.includes('"type":"error"')) throw parseErr;
+        }
+      }
+    }
+
+    throw new Error('Stream ended without result');
+  };
+
+  // Handle text submission — streams evaluation via SSE
   const handleTextSubmit = async (text: string) => {
     if (!topicData) return;
 
     setUserResponse(text);
     setIsEvaluating(true);
+    setStreamingScores(null);
     setError(null);
 
     try {
@@ -222,8 +289,8 @@ export default function TopicPracticePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topicId: topicData.id, // Pass topic ID for database persistence
-          sessionId: conversation.session?.id, // Pass session ID for memory system
+          topicId: topicData.id,
+          sessionId: conversation.session?.id,
           topicType: topicData.type,
           topicContent: {
             chinesePrompt: topicData.chinesePrompt,
@@ -241,33 +308,38 @@ export default function TopicPracticePage() {
         }),
       });
 
-      const result = await response.json();
-
-      if (!result.success) {
+      // Check for non-streaming error responses (400, 403, etc.)
+      if (!response.ok && response.headers.get('content-type')?.includes('application/json')) {
+        const result = await response.json();
         throw new Error(result.error || '评估失败');
       }
+
+      const result = await readSSEStream(response, (scores) => {
+        setStreamingScores(scores);
+      });
 
       // Save this attempt
       const newAttempt: AttemptData = {
         attemptNumber: attempts.length + 1,
         text,
-        overallScore: result.data.overallScore,
+        overallScore: result.overallScore,
         timestamp: new Date().toISOString(),
-        evaluation: result.data,
+        evaluation: result,
       };
 
       const newAttempts = [...attempts, newAttempt];
       saveAttempts(newAttempts);
-      setCurrentEvaluation(result.data);
+      setCurrentEvaluation(result);
 
       // Update level history with the score
-      const estimatedLevel = result.data.evaluation.overallCefrEstimate;
-      updateLevelHistory(result.data.overallScore, estimatedLevel);
+      const estimatedLevel = result.evaluation.overallCefrEstimate;
+      updateLevelHistory(result.overallScore, estimatedLevel);
     } catch (err) {
       console.error('Evaluation error:', err);
       setError(err instanceof Error ? err.message : '评估失败');
     } finally {
       setIsEvaluating(false);
+      setStreamingScores(null);
     }
   };
 
@@ -554,9 +626,47 @@ export default function TopicPracticePage() {
                 disabled={isEvaluating}
               />
               {isEvaluating && (
-                <div className="text-center text-sm text-gray-600">
-                  <span className="animate-spin inline-block mr-2">...</span>
-                  评估中...
+                <div className="space-y-3">
+                  {!streamingScores && (
+                    <div className="text-center text-sm text-gray-600">
+                      <span className="animate-spin inline-block mr-2">...</span>
+                      评估中...
+                    </div>
+                  )}
+                  {streamingScores && Object.keys(streamingScores).length > 0 && (
+                    <div className="bg-blue-50 rounded-xl p-4 space-y-2">
+                      <div className="text-xs text-blue-600 font-medium mb-2">
+                        评分中...
+                        <span className="inline-block w-1.5 h-3 bg-blue-500 animate-pulse ml-1 align-text-bottom" />
+                      </div>
+                      {Object.entries(streamingScores).map(([key, score]) => {
+                        const labels: Record<string, string> = {
+                          semanticAccuracy: '语义准确度',
+                          naturalness: '表达自然度',
+                          grammar: '语法正确性',
+                          vocabulary: '词汇丰富度',
+                          relevance: '内容相关性',
+                          depth: '内容丰富度',
+                          creativity: '表达创意度',
+                          languageQuality: '语言质量',
+                        };
+                        return (
+                          <div key={key} className="flex items-center gap-2">
+                            <span className="text-xs text-gray-600 w-24">{labels[key] || key}</span>
+                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  score >= 80 ? 'bg-green-500' : score >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${score}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-medium w-8 text-right">{score}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

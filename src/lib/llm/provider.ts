@@ -24,6 +24,24 @@ export interface LLMProvider {
   generateText(prompt: string, systemPrompt?: string): Promise<string>;
 
   /**
+   * Stream JSON generation — yields partial text chunks, returns validated result
+   * Caller receives an async iterator of raw text deltas plus a final validated object.
+   */
+  streamJSON<T>(
+    prompt: string,
+    schema: ZodSchema<T>,
+    systemPrompt?: string
+  ): AsyncGenerator<{ type: 'delta'; text: string } | { type: 'done'; data: T }>;
+
+  /**
+   * Stream plain text response — yields text chunks as they arrive
+   */
+  streamText(
+    prompt: string,
+    systemPrompt?: string
+  ): AsyncGenerator<string>;
+
+  /**
    * Provider name for identification
    */
   readonly name: string;

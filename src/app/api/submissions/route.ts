@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
 
     // Build profile context for personalized feedback
     let profileContext: string | null = null;
+    let speakerId: string | undefined;
     if (authResult.authenticated) {
       const speaker = await prisma.speaker.findFirst({
         where: { accountId: authResult.user.id },
@@ -110,14 +111,16 @@ export async function POST(request: NextRequest) {
         select: { id: true },
       });
       if (speaker) {
+        speakerId = speaker.id;
         profileContext = await buildProfileContext(speaker.id);
       }
     }
 
-    let evaluation;
+    // Build the prompt and create stream based on type
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let stream: AsyncGenerator<{ type: 'delta'; text: string } | { type: 'done'; data: any }>;
 
     if (topicType === 'translation') {
-      // Build translation evaluation prompt
       const prompt = buildTranslationEvaluationPrompt(
         topicContent.chinesePrompt,
         topicContent.keyPoints || [],
@@ -126,14 +129,8 @@ export async function POST(request: NextRequest) {
         historyAttempts,
         profileContext || undefined
       );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        TranslationEvaluationSchema,
-        TRANSLATION_EVALUATION_SYSTEM_PROMPT
-      );
+      stream = llm.streamJSON(prompt, TranslationEvaluationSchema, TRANSLATION_EVALUATION_SYSTEM_PROMPT);
     } else {
-      // Build expression evaluation prompt
       const grammarPoints = topicContent.grammarHints?.map(g => g.point) || [];
       const prompt = buildExpressionEvaluationPrompt(
         topicContent.chinesePrompt,
@@ -144,178 +141,84 @@ export async function POST(request: NextRequest) {
         historyAttempts,
         profileContext || undefined
       );
-
-      evaluation = await llm.generateJSON(
-        prompt,
-        ExpressionEvaluationSchema,
-        EXPRESSION_EVALUATION_SYSTEM_PROMPT
-      );
+      stream = llm.streamJSON(prompt, ExpressionEvaluationSchema, EXPRESSION_EVALUATION_SYSTEM_PROMPT);
     }
 
-    // Calculate overall score for response
-    let overallScore: number;
-    if (evaluation.type === 'translation') {
-      overallScore = Math.round(
-        (evaluation.semanticAccuracy.score * 0.4 +
-          evaluation.naturalness.score * 0.2 +
-          evaluation.grammar.score * 0.2 +
-          evaluation.vocabulary.score * 0.2)
-      );
-    } else {
-      overallScore = Math.round(
-        (evaluation.relevance.score * 0.25 +
-          evaluation.depth.score * 0.25 +
-          evaluation.creativity.score * 0.25 +
-          evaluation.languageQuality.score * 0.25)
-      );
-    }
-
-    // Save to database if user is authenticated and we have a topicId
-    let submissionId: string | undefined;
-    let activeSessionId: string | undefined = sessionId;
-
-    if (authResult.authenticated && topicId) {
-      // Get attempt number (count previous submissions for this topic)
-      const previousAttempts = await prisma.submission.count({
-        where: {
-          topicId,
-          accountId: authResult.user.id,
-        },
-      });
-
-      // Get default speaker for this user
-      const speaker = await prisma.speaker.findFirst({
-        where: { accountId: authResult.user.id },
-        orderBy: { createdAt: 'asc' },
-      });
-
-      // Create submission
-      const submission = await prisma.submission.create({
-        data: {
-          topicId,
-          accountId: authResult.user.id,
-          speakerId: speaker?.id,
-          attemptNumber: previousAttempts + 1,
-          inputMethod,
-          transcribedText: userResponse,
-          evaluation: evaluation as object,
-          difficultyAssessment: {
-            overallScore,
-            estimatedCefr: evaluation.overallCefrEstimate,
-          },
-        },
-      });
-
-      submissionId = submission.id;
-
-      // Extract and save grammar errors
-      const grammarErrors = evaluation.type === 'translation'
-        ? evaluation.grammar.errors
-        : evaluation.languageQuality.grammarErrors;
-
-      if (grammarErrors && grammarErrors.length > 0) {
-        await prisma.grammarError.createMany({
-          data: grammarErrors.map(error => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            errorPattern: error.rule,
-            originalText: error.original,
-            correctedText: error.corrected,
-            severity: error.severity,
-          })),
-        });
-      }
-
-      // Extract and save vocabulary usage (words from suggested vocab that were used)
-      const usedVocabWords = topicContent.suggestedVocab.filter(vocab =>
-        userResponse.toLowerCase().includes(vocab.word.toLowerCase())
-      );
-
-      if (usedVocabWords.length > 0) {
-        await prisma.vocabularyUsage.createMany({
-          data: usedVocabWords.map(vocab => ({
-            submissionId: submission.id,
-            speakerId: speaker?.id,
-            word: vocab.word,
-            wasFromHint: true,
-            usedCorrectly: true, // Simplified - could be enhanced with LLM check
-            cefrLevel: evaluation.overallCefrEstimate,
-          })),
-        });
-      }
-
-      // Update speaker's last active time
-      if (speaker) {
-        await prisma.speaker.update({
-          where: { id: speaker.id },
-          data: { lastActiveAt: new Date() },
-        });
-      }
-
-      // Add messages to chat session for memory system
-      if (!activeSessionId) {
-        // Get or create a session for this topic
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
         try {
-          const session = await getOrCreateSessionForTopic(
-            authResult.user.id,
-            topicId,
-            speaker?.id
+          for await (const event of stream) {
+            if (event.type === 'delta') {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: 'delta', text: event.text })}\n\n`)
+              );
+            } else if (event.type === 'done') {
+              const evaluation = event.data;
+
+              // Calculate overall score
+              let overallScore: number;
+              if ('semanticAccuracy' in evaluation && 'naturalness' in evaluation) {
+                const e = evaluation as { semanticAccuracy: { score: number }; naturalness: { score: number }; grammar: { score: number }; vocabulary: { score: number } };
+                overallScore = Math.round(
+                  e.semanticAccuracy.score * 0.4 +
+                  e.naturalness.score * 0.2 +
+                  e.grammar.score * 0.2 +
+                  e.vocabulary.score * 0.2
+                );
+              } else {
+                const e = evaluation as { relevance: { score: number }; depth: { score: number }; creativity: { score: number }; languageQuality: { score: number } };
+                overallScore = Math.round(
+                  e.relevance.score * 0.25 +
+                  e.depth.score * 0.25 +
+                  e.creativity.score * 0.25 +
+                  e.languageQuality.score * 0.25
+                );
+              }
+
+              // Send validated result to client immediately
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  type: 'done',
+                  data: {
+                    evaluation,
+                    overallScore,
+                    inputMethod,
+                  },
+                })}\n\n`)
+              );
+              controller.close();
+
+              // Fire-and-forget: DB persistence after response is sent
+              persistSubmission({
+                authResult,
+                topicId,
+                sessionId,
+                speakerId,
+                inputMethod,
+                userResponse,
+                topicContent,
+                topicType,
+                evaluation: evaluation as Record<string, unknown>,
+                overallScore,
+              }).catch(err => console.error('Background persistence error:', err));
+            }
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Stream error';
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`)
           );
-          activeSessionId = session.id;
-        } catch (err) {
-          console.error('Failed to create session:', err);
+          controller.close();
         }
-      }
+      },
+    });
 
-      if (activeSessionId) {
-        try {
-          // Add user message
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'user',
-            content: userResponse,
-            contentType: 'text',
-            metadata: {
-              inputMethod,
-            },
-          });
-
-          // Add assistant evaluation message (summarized)
-          const evaluationSummary = evaluation.type === 'translation'
-            ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
-            : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
-
-          await addMessage({
-            sessionId: activeSessionId,
-            role: 'assistant',
-            content: evaluationSummary,
-            contentType: 'evaluation',
-            metadata: {
-              overallScore,
-              estimatedCefr: evaluation.overallCefrEstimate,
-              evaluationType: topicType,
-            },
-          });
-        } catch (err) {
-          console.error('Failed to add messages to session:', err);
-        }
-      }
-    }
-
-    return NextResponse.json<ApiResponse<{
-      id?: string;
-      sessionId?: string;
-      evaluation: typeof evaluation;
-      overallScore: number;
-      inputMethod: string;
-    }>>({
-      success: true,
-      data: {
-        id: submissionId,
-        sessionId: activeSessionId,
-        evaluation,
-        overallScore,
-        inputMethod,
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
       },
     });
   } catch (error) {
@@ -325,5 +228,141 @@ export async function POST(request: NextRequest) {
       { success: false, error: `Evaluation failed: ${message}` },
       { status: 500 }
     );
+  }
+}
+
+// Persist submission to database in the background (after streaming response)
+async function persistSubmission(params: {
+  authResult: { authenticated: boolean; user: { id: string } | null };
+  topicId?: string;
+  sessionId?: string;
+  speakerId?: string;
+  inputMethod: string;
+  userResponse: string;
+  topicContent: { suggestedVocab: { word: string }[] };
+  topicType: string;
+  evaluation: Record<string, unknown>;
+  overallScore: number;
+}) {
+  const {
+    authResult, topicId, sessionId, speakerId, inputMethod,
+    userResponse, topicContent, topicType, evaluation, overallScore,
+  } = params;
+
+  if (!authResult.authenticated || !authResult.user || !topicId) return;
+
+  const userId = authResult.user.id;
+
+  try {
+    // Count + create submission in parallel where possible
+    const previousAttempts = await prisma.submission.count({
+      where: { topicId, accountId: userId },
+    });
+
+    const submission = await prisma.submission.create({
+      data: {
+        topicId,
+        accountId: userId,
+        speakerId,
+        attemptNumber: previousAttempts + 1,
+        inputMethod,
+        transcribedText: userResponse,
+        evaluation: evaluation as object,
+        difficultyAssessment: {
+          overallScore,
+          estimatedCefr: (evaluation as { overallCefrEstimate?: string }).overallCefrEstimate,
+        },
+      },
+    });
+
+    // Grammar errors and vocabulary usage in parallel
+    const evalTyped = evaluation as {
+      type?: string;
+      grammar?: { errors: { original: string; corrected: string; rule: string; severity: string }[] };
+      languageQuality?: { grammarErrors: { original: string; corrected: string; rule: string; severity: string }[] };
+    };
+
+    const grammarErrors = evalTyped.type === 'translation'
+      ? evalTyped.grammar?.errors
+      : evalTyped.languageQuality?.grammarErrors;
+
+    const usedVocabWords = topicContent.suggestedVocab.filter(vocab =>
+      userResponse.toLowerCase().includes(vocab.word.toLowerCase())
+    );
+
+    const cefrEstimate = (evaluation as { overallCefrEstimate?: string }).overallCefrEstimate;
+
+    await Promise.all([
+      grammarErrors && grammarErrors.length > 0
+        ? prisma.grammarError.createMany({
+            data: grammarErrors.map(error => ({
+              submissionId: submission.id,
+              speakerId,
+              errorPattern: error.rule,
+              originalText: error.original,
+              correctedText: error.corrected,
+              severity: error.severity,
+            })),
+          })
+        : Promise.resolve(),
+      usedVocabWords.length > 0
+        ? prisma.vocabularyUsage.createMany({
+            data: usedVocabWords.map(vocab => ({
+              submissionId: submission.id,
+              speakerId,
+              word: vocab.word,
+              wasFromHint: true,
+              usedCorrectly: true,
+              cefrLevel: cefrEstimate,
+            })),
+          })
+        : Promise.resolve(),
+      speakerId
+        ? prisma.speaker.update({
+            where: { id: speakerId },
+            data: { lastActiveAt: new Date() },
+          })
+        : Promise.resolve(),
+    ]);
+
+    // Memory system
+    let activeSessionId = sessionId;
+    if (!activeSessionId) {
+      try {
+        const session = await getOrCreateSessionForTopic(userId, topicId, speakerId);
+        activeSessionId = session.id;
+      } catch (err) {
+        console.error('Failed to create session:', err);
+      }
+    }
+
+    if (activeSessionId) {
+      const evaluationSummary = topicType === 'translation'
+        ? `Score: ${overallScore}/100. ${(evaluation as { semanticAccuracy?: { comment?: string } }).semanticAccuracy?.comment || ''} ${(evaluation as { naturalness?: { comment?: string } }).naturalness?.comment || ''}`
+        : `Score: ${overallScore}/100. ${(evaluation as { relevance?: { comment?: string } }).relevance?.comment || ''} ${(evaluation as { depth?: { comment?: string } }).depth?.comment || ''}`;
+
+      await Promise.all([
+        addMessage({
+          sessionId: activeSessionId,
+          role: 'user',
+          content: userResponse,
+          contentType: 'text',
+          metadata: { inputMethod: inputMethod as 'voice' | 'text' },
+        }),
+        addMessage({
+          sessionId: activeSessionId,
+          role: 'assistant',
+          content: evaluationSummary,
+          contentType: 'evaluation',
+          metadata: {
+            overallScore,
+            estimatedCefr: cefrEstimate as 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | undefined,
+            evaluationType: topicType as 'translation' | 'expression',
+          },
+        }),
+      ]);
+    }
+  } catch (err) {
+    console.error('Submission persistence error:', err);
   }
 }
