@@ -108,13 +108,15 @@ describe('TranslationTopicSchema', () => {
   });
 
   it('rejects data with missing chinesePrompt', () => {
-    const { chinesePrompt: _, ...incomplete } = translationFixture;
+    const incomplete = { ...translationFixture };
+    delete incomplete.chinesePrompt;
     const result = TranslationTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing keyPoints', () => {
-    const { keyPoints: _, ...incomplete } = translationFixture;
+    const incomplete = { ...translationFixture };
+    delete incomplete.keyPoints;
     const result = TranslationTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
@@ -154,13 +156,15 @@ describe('ExpressionTopicSchema', () => {
   });
 
   it('rejects data with missing guidingQuestions', () => {
-    const { guidingQuestions: _, ...incomplete } = expressionFixture;
+    const incomplete = { ...expressionFixture };
+    delete incomplete.guidingQuestions;
     const result = ExpressionTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing grammarHints', () => {
-    const { grammarHints: _, ...incomplete } = expressionFixture;
+    const incomplete = { ...expressionFixture };
+    delete incomplete.grammarHints;
     const result = ExpressionTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });

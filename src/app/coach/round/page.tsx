@@ -18,6 +18,7 @@ export default function CoachRoundPage() {
     const latest = loadLatestCoachRound();
     const recent = loadCoachRoundHistory();
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRound(latest);
     setHistory(recent);
     setIsLoaded(true);

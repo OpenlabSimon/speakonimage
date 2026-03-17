@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../../mocks/prisma';
-import { mockCheckAuth, setAuthenticated, setUnauthenticated, resetAuthMock } from '../../mocks/auth';
+import { mockCheckAuth, setUnauthenticated, resetAuthMock } from '../../mocks/auth';
 import { mockLLMProvider, resetLLMMock } from '../../mocks/llm';
 import translationEval from '../../mocks/fixtures/evaluation-translation.json';
 

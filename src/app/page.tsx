@@ -30,7 +30,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [showManualLevelSelect, setShowManualLevelSelect] = useState(false);
   const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
-  const [introductionText, setIntroductionText] = useState<string>('');
   const [dueCount, setDueCount] = useState(0);
   const { status: authStatus } = useSession();
   const {
@@ -77,7 +76,6 @@ export default function Home() {
     introText: string
   ) => {
     initializeLevel(level, confidence, introText);
-    setIntroductionText(introText);
     setStep('post-assessment');
   };
 

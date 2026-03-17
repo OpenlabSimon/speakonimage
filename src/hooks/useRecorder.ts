@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
@@ -25,7 +25,10 @@ export interface UseRecorderResult {
 export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
   const { maxDurationSeconds, onAutoStop } = options || {};
   const onAutoStopRef = useRef(onAutoStop);
-  onAutoStopRef.current = onAutoStop;
+
+  useEffect(() => {
+    onAutoStopRef.current = onAutoStop;
+  }, [onAutoStop]);
   const [state, setState] = useState<RecordingState>('idle');
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);

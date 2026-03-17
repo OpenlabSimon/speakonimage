@@ -1,4 +1,4 @@
-import { z, ZodSchema } from 'zod';
+import { ZodSchema } from 'zod';
 
 // LLM Provider interface - provider-agnostic
 export interface LLMProvider {

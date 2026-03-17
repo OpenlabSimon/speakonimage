@@ -1,6 +1,6 @@
 // Memory system types for conversation context and learning data extraction
 
-import type { CEFRLevel, GrammarErrorItem } from '@/types';
+import type { CEFRLevel } from '@/types';
 
 // Session types
 export type SessionType = 'practice' | 'review';

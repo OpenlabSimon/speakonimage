@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export function UserMenu() {
   const { data: session, status } = useSession();
@@ -47,7 +48,13 @@ export function UserMenu() {
         className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-medium hover:bg-blue-600 transition-colors overflow-hidden"
       >
         {image ? (
-          <img src={image} alt={displayName} className="w-full h-full object-cover" />
+          <Image
+            src={image}
+            alt={displayName}
+            width={40}
+            height={40}
+            className="w-full h-full object-cover"
+          />
         ) : (
           initial
         )}

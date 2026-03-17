@@ -43,7 +43,7 @@ test.describe('Authentication', () => {
 
     // Should stay on login page or show error
     await page.waitForTimeout(2000);
-    const errorVisible = await page.locator('[role="alert"]').or(page.locator('.text-red')).or(page.locator('text=error')).isVisible().catch(() => false);
+    await page.locator('[role="alert"]').or(page.locator('.text-red')).or(page.locator('text=error')).isVisible().catch(() => false);
     // Error should be visible or still on login page
     expect(page.url()).toContain('/auth');
   });

@@ -16,13 +16,15 @@ describe('TranslationEvaluationSchema', () => {
   });
 
   it('rejects data with missing semanticAccuracy', () => {
-    const { semanticAccuracy: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.semanticAccuracy;
     const result = TranslationEvaluationSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing grammar', () => {
-    const { grammar: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.grammar;
     const result = TranslationEvaluationSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });

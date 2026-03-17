@@ -6,7 +6,6 @@ import {
   SessionExtractionSchema,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
-  type SessionExtractionResult,
 } from '@/lib/llm/prompts/extract-session';
 import type { ChatSession, ChatMessage, SessionExtractionResult as TypedExtractionResult } from './types';
 

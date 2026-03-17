@@ -31,6 +31,7 @@ export function useCoachPreferences() {
       if (!stored) return;
 
       const parsed = normalizeCoachPreferences(JSON.parse(stored));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setReviewModeState(parsed.reviewMode);
       setAutoPlayAudioState(parsed.autoPlayAudio);
       setCharacterIdState(parsed.characterId);

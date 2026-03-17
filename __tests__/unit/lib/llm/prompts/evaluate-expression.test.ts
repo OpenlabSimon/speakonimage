@@ -16,19 +16,22 @@ describe('ExpressionEvaluationSchema', () => {
   });
 
   it('rejects data with missing relevance', () => {
-    const { relevance: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.relevance;
     const result = ExpressionEvaluationSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing depth', () => {
-    const { depth: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.depth;
     const result = ExpressionEvaluationSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing languageQuality', () => {
-    const { languageQuality: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.languageQuality;
     const result = ExpressionEvaluationSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });

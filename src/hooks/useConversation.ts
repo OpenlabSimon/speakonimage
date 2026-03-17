@@ -126,7 +126,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, [options.topicId]);
+  }, [options.isAuthenticated, options.topicId]);
 
   /**
    * End the current session
@@ -156,7 +156,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [options.isAuthenticated]);
 
   /**
    * Add a message to the session
@@ -207,7 +207,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
       setError(message);
       return null;
     }
-  }, []);
+  }, [options.isAuthenticated]);
 
   /**
    * Add a user message
@@ -254,7 +254,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [options.isAuthenticated]);
 
   /**
    * Clear error state

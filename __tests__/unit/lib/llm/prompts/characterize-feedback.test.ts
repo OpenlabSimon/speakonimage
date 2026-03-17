@@ -17,19 +17,22 @@ describe('CharacterFeedbackSchema', () => {
   });
 
   it('rejects data with missing feedbackText', () => {
-    const { feedbackText: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.feedbackText;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing ttsText', () => {
-    const { ttsText: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.ttsText;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing mood', () => {
-    const { mood: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.mood;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
