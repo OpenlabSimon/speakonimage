@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useProfile } from '@/hooks/useProfile';
+import { useCoachPreferences } from '@/hooks/useCoachPreferences';
+import { CoachPreferencesPanel } from '@/components/evaluation/CoachPreferencesPanel';
 import { StatsOverview } from '@/components/profile/StatsOverview';
 import { GrammarErrorList } from '@/components/profile/GrammarErrorList';
 import { VocabSummary } from '@/components/profile/VocabSummary';
@@ -14,6 +16,17 @@ export default function ProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const { data: profileData, loading, error } = useProfile();
+  const {
+    characterId,
+    setCharacterId,
+    reviewMode,
+    setReviewMode,
+    autoPlayAudio,
+    setAutoPlayAudio,
+    voiceId,
+    setVoiceId,
+    isRemoteBacked,
+  } = useCoachPreferences();
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -79,6 +92,21 @@ export default function ProfilePage() {
             {error}
           </div>
         )}
+
+        <div className="bg-white rounded-2xl shadow-lg p-5">
+          <h2 className="text-base font-semibold text-gray-800 mb-3">教练偏好</h2>
+          <CoachPreferencesPanel
+            characterId={characterId}
+            onCharacterChange={setCharacterId}
+            reviewMode={reviewMode}
+            onReviewModeChange={setReviewMode}
+            autoPlayAudio={autoPlayAudio}
+            onAutoPlayAudioChange={setAutoPlayAudio}
+            voiceId={voiceId}
+            onVoiceIdChange={setVoiceId}
+            isRemoteBacked={isRemoteBacked}
+          />
+        </div>
 
         {profileData && (
           <>

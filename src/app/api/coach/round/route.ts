@@ -5,10 +5,9 @@ import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { runCoachingRound } from '@/domains/runtime/round-orchestrator';
 import type { ApiResponse } from '@/types';
 
-// Request body schema
-const SubmissionRequestSchema = z.object({
-  topicId: z.string().uuid().optional(), // Topic ID from database
-  sessionId: z.string().uuid().optional(), // Chat session ID for memory
+const CoachingRoundRequestSchema = z.object({
+  topicId: z.string().uuid().optional(),
+  sessionId: z.string().uuid().optional(),
   topicType: z.enum(['translation', 'expression']),
   topicContent: z.object({
     chinesePrompt: z.string(),
@@ -29,7 +28,15 @@ const SubmissionRequestSchema = z.object({
     })).optional(),
   }),
   userResponse: z.string().min(1),
-  inputMethod: z.enum(['voice', 'text']),
+  inputMethod: z.enum(['text', 'voice']),
+  teacher: z.object({
+    soulId: z.enum(['default', 'gentle', 'strict', 'humorous', 'scholarly', 'energetic']).optional(),
+    voiceId: z.string().min(1).optional(),
+  }).optional(),
+  review: z.object({
+    mode: z.enum(['text', 'audio', 'html', 'all']).optional(),
+    autoPlayAudio: z.boolean().optional(),
+  }).optional(),
   historyAttempts: z.array(z.object({
     text: z.string(),
     score: z.number(),
@@ -39,7 +46,7 @@ const SubmissionRequestSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const parsed = SubmissionRequestSchema.safeParse(body);
+    const parsed = CoachingRoundRequestSchema.safeParse(body);
 
     if (!parsed.success) {
       return NextResponse.json<ApiResponse<null>>(
@@ -48,12 +55,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { topicId, sessionId, topicType, topicContent, userResponse, inputMethod, historyAttempts } = parsed.data;
-
-    // Check authentication
+    const {
+      topicId,
+      sessionId,
+      topicType,
+      topicContent,
+      userResponse,
+      inputMethod,
+      teacher,
+      review,
+      historyAttempts,
+    } = parsed.data;
     const authResult = await checkAuth();
 
-    // If topicId is provided, require authentication and validate ownership
     if (topicId) {
       if (!authResult.authenticated) {
         return unauthorizedResponse('Authentication required to submit to a saved topic');
@@ -87,6 +101,8 @@ export async function POST(request: NextRequest) {
       topicContent,
       userResponse,
       inputMethod,
+      teacher,
+      review,
       historyAttempts,
       persistence: {
         topicId,
@@ -94,27 +110,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json<ApiResponse<{
-      id?: string;
-      sessionId?: string;
-      evaluation: typeof round.evaluation;
-      overallScore: number;
-      inputMethod: string;
-    }>>({
+    return NextResponse.json<ApiResponse<typeof round>>({
       success: true,
-      data: {
-        id: round.submissionId,
-        sessionId: round.sessionId,
-        evaluation: round.evaluation,
-        overallScore: round.overallScore,
-        inputMethod: round.inputMethod,
-      },
+      data: round,
     });
   } catch (error) {
-    console.error('Submission evaluation error:', error);
+    console.error('Coach round error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json<ApiResponse<null>>(
-      { success: false, error: `Evaluation failed: ${message}` },
+      { success: false, error: `Coach round failed: ${message}` },
       { status: 500 }
     );
   }

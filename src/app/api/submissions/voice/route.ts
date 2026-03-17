@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
-import { evaluateResponse, getProfileContext, persistSubmission } from '@/lib/evaluation/evaluateSubmission';
+import { runCoachingRound } from '@/domains/runtime/round-orchestrator';
 import type { ApiResponse } from '@/types';
+
+const VoiceTeacherSchema = z.object({
+  soulId: z
+    .enum(['default', 'gentle', 'strict', 'humorous', 'scholarly', 'energetic'])
+    .optional(),
+  voiceId: z.string().min(1).optional(),
+});
+
+const VoiceReviewSchema = z.object({
+  mode: z.enum(['text', 'audio', 'html', 'all']).optional(),
+  autoPlayAudio: z.boolean().optional(),
+});
 
 /**
  * Voice submission endpoint
@@ -54,6 +67,32 @@ export async function POST(request: NextRequest) {
     // Get topicId and sessionId from form data (optional)
     const topicId = formData.get('topicId') as string | null;
     const sessionId = formData.get('sessionId') as string | null;
+    const teacherStr = formData.get('teacher') as string | null;
+    const reviewStr = formData.get('review') as string | null;
+    let teacher: z.infer<typeof VoiceTeacherSchema> | undefined;
+    let review: z.infer<typeof VoiceReviewSchema> | undefined;
+
+    if (teacherStr) {
+      try {
+        teacher = VoiceTeacherSchema.parse(JSON.parse(teacherStr));
+      } catch {
+        return NextResponse.json<ApiResponse<null>>(
+          { success: false, error: 'Invalid teacher JSON' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (reviewStr) {
+      try {
+        review = VoiceReviewSchema.parse(JSON.parse(reviewStr));
+      } catch {
+        return NextResponse.json<ApiResponse<null>>(
+          { success: false, error: 'Invalid review JSON' },
+          { status: 400 }
+        );
+      }
+    }
 
     // Check authentication
     const authResult = await checkAuth();
@@ -171,63 +210,66 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Step 3: Evaluate the transcription
-    const profileContext = authResult.authenticated
-      ? await getProfileContext(authResult.user.id)
-      : null;
-
-    const suggestedVocab = topicData.suggestedVocab || [];
-
-    const { evaluation, overallScore } = await evaluateResponse({
+    // Step 3: Evaluate and optionally persist as one coaching round
+    const round = await runCoachingRound({
+      auth: authResult.authenticated
+        ? { authenticated: true, userId: authResult.user.id }
+        : { authenticated: false },
       topicType: topicData.type,
-      chinesePrompt: topicData.chinesePrompt,
-      keyPoints: topicData.keyPoints,
-      guidingQuestions: topicData.guidingQuestions,
-      suggestedVocab,
-      grammarHints: topicData.grammarHints,
+      topicContent: {
+        chinesePrompt: topicData.chinesePrompt,
+        keyPoints: topicData.keyPoints,
+        guidingQuestions: topicData.guidingQuestions,
+        suggestedVocab: topicData.suggestedVocab || [],
+        grammarHints: topicData.grammarHints,
+      },
       userResponse: transcribedText,
       inputMethod: 'voice',
-      profileContext,
-    });
-
-    // Step 4: Save to database if user is authenticated and we have a topicId
-    let submissionId: string | undefined;
-    if (authResult.authenticated && topicId) {
-      const result = await persistSubmission({
-        topicId,
-        accountId: authResult.user.id,
-        inputMethod: 'voice',
-        userResponse: transcribedText,
-        audioUrl,
-        evaluation,
-        overallScore,
-        topicType: topicData.type,
-        suggestedVocab,
+      teacher,
+      review,
+      persistence: {
+        topicId: topicId || undefined,
         sessionId: sessionId || undefined,
-      });
-      submissionId = result.submissionId;
-    }
+        audioUrl,
+      },
+    });
 
     return NextResponse.json<ApiResponse<{
       id?: string;
       transcription: string;
       confidence: number | undefined;
       duration: number | undefined;
-      evaluation: typeof evaluation;
+      evaluation: typeof round.evaluation;
       overallScore: number;
       inputMethod: 'voice';
       audioUrl?: string;
+      practiceMode: typeof round.practiceMode;
+      skillDomain: typeof round.skillDomain;
+      teacher: typeof round.teacher;
+      review: typeof round.review;
+      reviewText: string;
+      ttsText: string;
+      audioReview: typeof round.audioReview;
+      htmlArtifact: typeof round.htmlArtifact;
     }>>({
       success: true,
       data: {
-        id: submissionId,
+        id: round.submissionId,
         transcription: transcribedText,
         confidence: transcriptionResult.confidence,
         duration: transcriptionResult.duration,
-        evaluation,
-        overallScore,
+        evaluation: round.evaluation,
+        overallScore: round.overallScore,
         inputMethod: 'voice',
         audioUrl,
+        practiceMode: round.practiceMode,
+        skillDomain: round.skillDomain,
+        teacher: round.teacher,
+        review: round.review,
+        reviewText: round.reviewText,
+        ttsText: round.ttsText,
+        audioReview: round.audioReview,
+        htmlArtifact: round.htmlArtifact,
       },
     });
   } catch (error) {

@@ -9,15 +9,20 @@ import { GrammarPanel } from '@/components/topic/GrammarCard';
 import { VoiceRecorder } from '@/components/input/VoiceRecorder';
 import { TextInput } from '@/components/input/TextInput';
 import { EvaluationResult } from '@/components/evaluation/EvaluationResult';
-import { CharacterSelector } from '@/components/evaluation/CharacterSelector';
+import { CoachPreferencesPanel } from '@/components/evaluation/CoachPreferencesPanel';
 import { LevelChangeModal } from '@/components/assessment/LevelChangeModal';
 import { PracticeGameOverlay } from '@/components/evaluation/PracticeGameOverlay';
 import { useLevelHistory, type LevelChangeResult } from '@/hooks/useLevelHistory';
 import { useConversation } from '@/hooks/useConversation';
-import { useCharacterSelection } from '@/hooks/useCharacterSelection';
+import { useCoachPreferences } from '@/hooks/useCoachPreferences';
 import { usePracticeGame } from '@/hooks/usePracticeGame';
 import { getCharacter } from '@/lib/characters';
+import { teacherSelectionFromCharacter } from '@/domains/teachers/character-bridge';
+import { saveLatestCoachRound } from '@/lib/coach-round-storage';
+import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 import type {
+  PracticeMode,
+  SkillDomain,
   TopicContent,
   VocabularyItem,
   GrammarHint,
@@ -46,7 +51,16 @@ interface EvaluationData {
   evaluation: TranslationEvaluationScores | ExpressionEvaluationScores;
   overallScore: number;
   inputMethod: string;
+  practiceMode?: PracticeMode;
+  skillDomain?: SkillDomain;
   audioUrl?: string;
+  teacher?: TeacherSelection;
+  reviewMode?: ReviewMode;
+  reviewAutoPlay?: boolean;
+  reviewText?: string;
+  ttsText?: string;
+  audioReview?: AudioReview;
+  htmlArtifact?: HtmlArtifact;
 }
 
 interface AttemptData {
@@ -63,7 +77,17 @@ export default function TopicPracticePage() {
   const { data: authSession } = useSession();
   const isAuthenticated = !!authSession?.user;
   const { addScore, upgradeLevel, setLevel, getCurrentLevel } = useLevelHistory();
-  const { characterId, setCharacterId } = useCharacterSelection();
+  const {
+    reviewMode,
+    setReviewMode,
+    autoPlayAudio: reviewAutoPlay,
+    setAutoPlayAudio: setReviewAutoPlay,
+    characterId,
+    setCharacterId,
+    voiceId,
+    setVoiceId,
+    isRemoteBacked,
+  } = useCoachPreferences();
 
   const [topicData, setTopicData] = useState<TopicData | null>(null);
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
@@ -193,6 +217,15 @@ export default function TopicPracticePage() {
     audioUrl?: string;
     evaluation?: unknown;
     overallScore?: number;
+    practiceMode?: PracticeMode;
+    skillDomain?: SkillDomain;
+    teacher?: TeacherSelection;
+    reviewMode?: ReviewMode;
+    reviewAutoPlay?: boolean;
+    reviewText?: string;
+    ttsText?: string;
+    audioReview?: AudioReview;
+    htmlArtifact?: HtmlArtifact;
   }) => {
     setUserResponse(result.transcription);
 
@@ -204,7 +237,16 @@ export default function TopicPracticePage() {
             | ExpressionEvaluationScores,
         overallScore: result.overallScore,
         inputMethod: 'voice',
+        practiceMode: result.practiceMode,
+        skillDomain: result.skillDomain,
         audioUrl: result.audioUrl,
+        teacher: result.teacher,
+        reviewMode: result.reviewMode,
+        reviewAutoPlay: result.reviewAutoPlay,
+        reviewText: result.reviewText,
+        ttsText: result.ttsText,
+        audioReview: result.audioReview,
+        htmlArtifact: result.htmlArtifact,
       };
 
       // Save this attempt
@@ -220,6 +262,30 @@ export default function TopicPracticePage() {
       const newAttempts = [...attempts, newAttempt];
       saveAttempts(newAttempts);
       setCurrentEvaluation(evalData);
+      if (
+        evalData.teacher &&
+        evalData.reviewMode &&
+        evalData.reviewText &&
+        evalData.ttsText &&
+        evalData.audioReview &&
+        evalData.htmlArtifact
+      ) {
+        saveLatestCoachRound({
+          teacher: evalData.teacher,
+          reviewMode: evalData.reviewMode,
+          autoPlayAudio: evalData.reviewAutoPlay ?? false,
+          reviewText: evalData.reviewText,
+          ttsText: evalData.ttsText,
+          audioReview: evalData.audioReview,
+          htmlArtifact: evalData.htmlArtifact,
+          overallScore: evalData.overallScore,
+          userResponse: result.transcription,
+          inputMethod: 'voice',
+          practiceMode: evalData.practiceMode,
+          skillDomain: evalData.skillDomain,
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       // Update level history with the score
       const estimatedLevel = evalData.evaluation.overallCefrEstimate;
@@ -236,7 +302,8 @@ export default function TopicPracticePage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/submissions', {
+      const teacher = teacherSelectionFromCharacter(characterId, voiceId || undefined);
+      const response = await fetch('/api/coach/round', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,6 +319,8 @@ export default function TopicPracticePage() {
           },
           userResponse: text,
           inputMethod: 'text',
+          teacher,
+          review: { mode: reviewMode, autoPlayAudio: reviewAutoPlay },
           historyAttempts: attempts.map((a) => ({
             text: a.text,
             score: a.overallScore,
@@ -271,12 +340,63 @@ export default function TopicPracticePage() {
         text,
         overallScore: result.data.overallScore,
         timestamp: new Date().toISOString(),
-        evaluation: result.data,
+        evaluation: {
+          evaluation: result.data.evaluation,
+          overallScore: result.data.overallScore,
+          inputMethod: result.data.inputMethod,
+          practiceMode: result.data.practiceMode,
+          skillDomain: result.data.skillDomain,
+          teacher: result.data.teacher,
+          reviewMode: result.data.review?.mode,
+          reviewAutoPlay: result.data.review?.autoPlayAudio,
+          reviewText: result.data.reviewText,
+          ttsText: result.data.ttsText,
+          audioReview: result.data.audioReview,
+          htmlArtifact: result.data.htmlArtifact,
+        },
       };
 
       const newAttempts = [...attempts, newAttempt];
       saveAttempts(newAttempts);
-      setCurrentEvaluation(result.data);
+      const nextEvaluation: EvaluationData = {
+        evaluation: result.data.evaluation,
+        overallScore: result.data.overallScore,
+        inputMethod: result.data.inputMethod,
+        practiceMode: result.data.practiceMode,
+        skillDomain: result.data.skillDomain,
+        teacher: result.data.teacher,
+        reviewMode: result.data.review?.mode,
+        reviewAutoPlay: result.data.review?.autoPlayAudio,
+        reviewText: result.data.reviewText,
+        ttsText: result.data.ttsText,
+        audioReview: result.data.audioReview,
+        htmlArtifact: result.data.htmlArtifact,
+      };
+      setCurrentEvaluation(nextEvaluation);
+      if (
+        nextEvaluation.teacher &&
+        nextEvaluation.reviewMode &&
+        nextEvaluation.reviewText &&
+        nextEvaluation.ttsText &&
+        nextEvaluation.audioReview &&
+        nextEvaluation.htmlArtifact
+      ) {
+        saveLatestCoachRound({
+          teacher: nextEvaluation.teacher,
+          reviewMode: nextEvaluation.reviewMode,
+          autoPlayAudio: nextEvaluation.reviewAutoPlay ?? false,
+          reviewText: nextEvaluation.reviewText,
+          ttsText: nextEvaluation.ttsText,
+          audioReview: nextEvaluation.audioReview,
+          htmlArtifact: nextEvaluation.htmlArtifact,
+          overallScore: nextEvaluation.overallScore,
+          userResponse: text,
+          inputMethod: result.data.inputMethod,
+          practiceMode: nextEvaluation.practiceMode,
+          skillDomain: nextEvaluation.skillDomain,
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       // Update level history with the score
       const estimatedLevel = result.data.evaluation.overallCefrEstimate;
@@ -392,6 +512,24 @@ export default function TopicPracticePage() {
             topicType={topicData.type}
             chinesePrompt={topicData.chinesePrompt}
             inputMethod={currentEvaluation.inputMethod as 'voice' | 'text'}
+            coachReview={
+              currentEvaluation.teacher &&
+              currentEvaluation.reviewMode &&
+              currentEvaluation.reviewText &&
+              currentEvaluation.ttsText &&
+              currentEvaluation.audioReview &&
+              currentEvaluation.htmlArtifact
+                ? {
+                    teacher: currentEvaluation.teacher,
+                    reviewMode: currentEvaluation.reviewMode,
+                    autoPlayAudio: currentEvaluation.reviewAutoPlay ?? false,
+                    reviewText: currentEvaluation.reviewText,
+                    ttsText: currentEvaluation.ttsText,
+                    audioReview: currentEvaluation.audioReview,
+                    htmlArtifact: currentEvaluation.htmlArtifact,
+                  }
+                : undefined
+            }
           />
 
           {/* Previous Recordings */}
@@ -500,10 +638,17 @@ export default function TopicPracticePage() {
           </div>
         </div>
 
-        {/* Teacher Character Selector */}
-        <div className="mb-4">
-          <CharacterSelector selectedId={characterId} onSelect={setCharacterId} />
-        </div>
+        <CoachPreferencesPanel
+          characterId={characterId}
+          onCharacterChange={setCharacterId}
+          reviewMode={reviewMode}
+          onReviewModeChange={setReviewMode}
+          autoPlayAudio={reviewAutoPlay}
+          onAutoPlayAudioChange={setReviewAutoPlay}
+          voiceId={voiceId}
+          onVoiceIdChange={setVoiceId}
+          isRemoteBacked={isRemoteBacked}
+        />
 
         {/* Chinese Prompt */}
         <div className="mb-6">
@@ -575,6 +720,9 @@ export default function TopicPracticePage() {
               sessionId={conversation.session?.id}
               onError={(error) => setError(error)}
               cefrLevel={getCurrentLevel()}
+              teacher={teacherSelectionFromCharacter(characterId, voiceId || undefined)}
+              reviewMode={reviewMode}
+              autoPlayAudio={reviewAutoPlay}
             />
           )}
 

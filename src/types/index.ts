@@ -10,6 +10,19 @@ export type InputMethod = 'voice' | 'text';
 // Topic types - 两种题型
 export type TopicType = 'translation' | 'expression';
 
+// Concrete coaching modes - task type x input method
+export type PracticeMode =
+  | 'translation_text'
+  | 'translation_voice'
+  | 'expression_text'
+  | 'expression_voice';
+
+// Skill domains are what the coach should actually evaluate and train.
+export type SkillDomain =
+  | 'translation'
+  | 'written_expression'
+  | 'spoken_expression';
+
 // API Response wrapper
 export interface ApiResponse<T> {
   success: boolean;

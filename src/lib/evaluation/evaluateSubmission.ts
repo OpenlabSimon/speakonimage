@@ -1,42 +1,22 @@
 import { prisma } from '@/lib/db';
-import { getLLMProvider } from '@/lib/llm';
-import {
-  TranslationEvaluationSchema,
-  getTranslationEvaluationSystemPrompt,
-  buildTranslationEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-translation';
-import type { TranslationEvaluationOutput } from '@/lib/llm/prompts/evaluate-translation';
-import {
-  ExpressionEvaluationSchema,
-  getExpressionEvaluationSystemPrompt,
-  buildExpressionEvaluationPrompt,
-} from '@/lib/llm/prompts/evaluate-expression';
-import type { ExpressionEvaluationOutput } from '@/lib/llm/prompts/evaluate-expression';
 import {
   getOrCreateSessionForTopic,
   addMessage,
 } from '@/lib/memory/ConversationManager';
 import { buildProfileContext } from '@/lib/profile/ProfileInjector';
-
-export type EvaluationOutput = TranslationEvaluationOutput | ExpressionEvaluationOutput;
-
-export interface EvaluateParams {
-  topicType: 'translation' | 'expression';
-  chinesePrompt: string;
-  keyPoints?: string[];
-  guidingQuestions?: string[];
-  suggestedVocab: { word: string }[];
-  grammarHints?: { point: string }[];
-  userResponse: string;
-  inputMethod: 'voice' | 'text';
-  historyAttempts?: { text: string; score: number }[];
-  profileContext?: string | null;
-}
-
-export interface EvaluateResult {
-  evaluation: EvaluationOutput;
-  overallScore: number;
-}
+import { evaluateTranslationAttempt } from './evaluators/evaluateTranslationAttempt';
+import { evaluateWrittenExpressionAttempt } from './evaluators/evaluateWrittenExpressionAttempt';
+import { evaluateSpokenExpressionAttempt } from './evaluators/evaluateSpokenExpressionAttempt';
+import {
+  calculateOverallScore,
+  getPracticeMode,
+  getSkillDomain,
+} from './evaluators/types';
+import type {
+  EvaluationOutput,
+  EvaluateParams,
+  EvaluateResult,
+} from './evaluators/types';
 
 export interface PersistParams {
   topicId: string;
@@ -61,70 +41,29 @@ export interface PersistResult {
  * Run LLM evaluation on a user's response.
  */
 export async function evaluateResponse(params: EvaluateParams): Promise<EvaluateResult> {
-  const llm = getLLMProvider();
-  const vocabWords = params.suggestedVocab.map(v => v.word);
+  const practiceMode = getPracticeMode(params.topicType, params.inputMethod);
+  const skillDomain = getSkillDomain(practiceMode);
+
   let evaluation: EvaluationOutput;
 
-  if (params.topicType === 'translation') {
-    const prompt = buildTranslationEvaluationPrompt(
-      params.chinesePrompt,
-      params.keyPoints || [],
-      params.userResponse,
-      vocabWords,
-      params.historyAttempts,
-      params.profileContext || undefined,
-      params.inputMethod
-    );
-
-    evaluation = await llm.generateJSON(
-      prompt,
-      TranslationEvaluationSchema,
-      getTranslationEvaluationSystemPrompt(params.inputMethod)
-    );
-  } else {
-    const grammarPoints = params.grammarHints?.map(g => g.point) || [];
-    const prompt = buildExpressionEvaluationPrompt(
-      params.chinesePrompt,
-      params.guidingQuestions || [],
-      params.userResponse,
-      vocabWords,
-      grammarPoints,
-      params.historyAttempts,
-      params.profileContext || undefined,
-      params.inputMethod
-    );
-
-    evaluation = await llm.generateJSON(
-      prompt,
-      ExpressionEvaluationSchema,
-      getExpressionEvaluationSystemPrompt(params.inputMethod)
-    );
+  switch (practiceMode) {
+    case 'translation_text':
+    case 'translation_voice':
+      evaluation = await evaluateTranslationAttempt(params);
+      break;
+    case 'expression_text':
+      evaluation = await evaluateWrittenExpressionAttempt(params);
+      break;
+    case 'expression_voice':
+      evaluation = await evaluateSpokenExpressionAttempt(params);
+      break;
   }
 
   const overallScore = calculateOverallScore(evaluation);
-  return { evaluation, overallScore };
+  return { evaluation, overallScore, practiceMode, skillDomain };
 }
 
-/**
- * Calculate weighted overall score from evaluation.
- */
-export function calculateOverallScore(evaluation: EvaluationOutput): number {
-  if (evaluation.type === 'translation') {
-    return Math.round(
-      evaluation.semanticAccuracy.score * 0.4 +
-      evaluation.naturalness.score * 0.2 +
-      evaluation.grammar.score * 0.2 +
-      evaluation.vocabulary.score * 0.2
-    );
-  } else {
-    return Math.round(
-      evaluation.relevance.score * 0.25 +
-      evaluation.depth.score * 0.25 +
-      evaluation.creativity.score * 0.25 +
-      evaluation.languageQuality.score * 0.25
-    );
-  }
-}
+export { calculateOverallScore } from './evaluators/types';
 
 /**
  * Build profile context for an authenticated user.

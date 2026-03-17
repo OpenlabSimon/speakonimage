@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { UserMenu } from '@/components/ui/UserMenu';
 import { IntroductionInput } from '@/components/assessment/IntroductionInput';
 import { useLevelHistory } from '@/hooks/useLevelHistory';
+import { useCoachPreferences } from '@/hooks/useCoachPreferences';
+import { CoachQuickSummaryCard } from '@/components/evaluation/CoachQuickSummaryCard';
 import type { CEFRLevel } from '@/types';
 
 type PageStep = 'assessment' | 'post-assessment' | 'topic-input';
@@ -31,6 +33,17 @@ export default function Home() {
   const [introductionText, setIntroductionText] = useState<string>('');
   const [dueCount, setDueCount] = useState(0);
   const { status: authStatus } = useSession();
+  const {
+    characterId,
+    setCharacterId,
+    reviewMode,
+    setReviewMode,
+    autoPlayAudio,
+    setAutoPlayAudio,
+    voiceId,
+    setVoiceId,
+    isRemoteBacked,
+  } = useCoachPreferences();
 
   // Determine initial step based on level history
   useEffect(() => {
@@ -291,6 +304,18 @@ export default function Home() {
         {/* Step 2: Topic Input (no level selection) */}
         {step === 'topic-input' && (
           <>
+            <CoachQuickSummaryCard
+              characterId={characterId}
+              reviewMode={reviewMode}
+              autoPlayAudio={autoPlayAudio}
+              voiceId={voiceId}
+              isRemoteBacked={isRemoteBacked}
+              onReviewModeChange={setReviewMode}
+              onAutoPlayAudioChange={setAutoPlayAudio}
+              onCharacterChange={setCharacterId}
+              onVoiceIdChange={setVoiceId}
+            />
+
             {/* Input Section */}
             <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-4">

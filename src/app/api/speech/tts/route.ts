@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { synthesizeWithElevenLabs } from '@/lib/speech/elevenlabs';
 
 // TTS provider types
 type TTSProvider = 'azure' | 'elevenlabs';
@@ -62,50 +63,6 @@ async function azureTTS(text: string, voice?: string): Promise<ArrayBuffer> {
   return response.arrayBuffer();
 }
 
-/**
- * ElevenLabs TTS API
- * Docs: https://elevenlabs.io/docs/api-reference/text-to-speech
- */
-async function elevenlabsTTS(text: string, voice?: string, voiceSettings?: VoiceSettings): Promise<ArrayBuffer> {
-  const key = process.env.ELEVENLABS_API_KEY;
-
-  if (!key) {
-    throw new Error('ELEVENLABS_API_KEY not configured');
-  }
-
-  // Default voice - Rachel (warm, friendly)
-  const voiceId = voice || '21m00Tcm4TlvDq8ikWAM';
-
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-    {
-      method: 'POST',
-      headers: {
-        'xi-api-key': key,
-        'Content-Type': 'application/json',
-        'Accept': 'audio/mpeg',
-      },
-      body: JSON.stringify({
-        text,
-        model_id: voiceSettings?.modelId || 'eleven_monolingual_v1',
-        voice_settings: {
-          stability: voiceSettings?.stability ?? 0.5,
-          similarity_boost: voiceSettings?.similarityBoost ?? 0.75,
-          ...(voiceSettings?.style !== undefined && { style: voiceSettings.style }),
-          ...(voiceSettings?.speakerBoost !== undefined && { use_speaker_boost: voiceSettings.speakerBoost }),
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`ElevenLabs TTS failed: ${response.status} - ${errorText}`);
-  }
-
-  return response.arrayBuffer();
-}
-
 function escapeXml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -138,7 +95,11 @@ export async function POST(request: NextRequest) {
     let audioBuffer: ArrayBuffer;
 
     if (provider === 'elevenlabs') {
-      audioBuffer = await elevenlabsTTS(text, voice, voiceSettings);
+      audioBuffer = await synthesizeWithElevenLabs(
+        text,
+        voice || '21m00Tcm4TlvDq8ikWAM',
+        voiceSettings
+      );
     } else {
       audioBuffer = await azureTTS(text, voice);
     }

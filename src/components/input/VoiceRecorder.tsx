@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
 import { convertToWav } from '@/lib/audio/convert';
 import type { CEFRLevel } from '@/types';
+import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 
 const MAX_DURATION_SECONDS = 180; // 3 minutes absolute max
 const MAX_AUDIO_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -27,6 +28,13 @@ interface VoiceRecorderProps {
     audioUrl?: string;
     evaluation?: unknown;
     overallScore?: number;
+    teacher?: TeacherSelection;
+    reviewMode?: ReviewMode;
+    reviewAutoPlay?: boolean;
+    reviewText?: string;
+    ttsText?: string;
+    audioReview?: AudioReview;
+    htmlArtifact?: HtmlArtifact;
   }) => void;
   topicData: unknown;
   topicId?: string; // Database topic ID for persistence
@@ -34,6 +42,9 @@ interface VoiceRecorderProps {
   onError?: (error: string) => void;
   disabled?: boolean;
   cefrLevel?: CEFRLevel;
+  teacher?: TeacherSelection;
+  reviewMode?: ReviewMode;
+  autoPlayAudio?: boolean;
 }
 
 export function VoiceRecorder({
@@ -44,6 +55,9 @@ export function VoiceRecorder({
   onError,
   disabled,
   cefrLevel,
+  teacher,
+  reviewMode = 'text',
+  autoPlayAudio = false,
 }: VoiceRecorderProps) {
   const suggestedDuration = getSuggestedDuration(cefrLevel);
   const pendingAutoStopBlobRef = useRef<Blob | null>(null);
@@ -142,6 +156,12 @@ export function VoiceRecorder({
       if (sessionId) {
         formData.append('sessionId', sessionId);
       }
+      if (teacher) {
+        formData.append('teacher', JSON.stringify(teacher));
+      }
+      if (reviewMode) {
+        formData.append('review', JSON.stringify({ mode: reviewMode, autoPlayAudio }));
+      }
 
       setProcessingStep('转写并评估中...');
 
@@ -169,6 +189,13 @@ export function VoiceRecorder({
           audioUrl: result.data.audioUrl,
           evaluation: result.data.evaluation,
           overallScore: result.data.overallScore,
+          teacher: result.data.teacher,
+          reviewMode: result.data.review?.mode,
+          reviewAutoPlay: result.data.review?.autoPlayAudio,
+          reviewText: result.data.reviewText,
+          ttsText: result.data.ttsText,
+          audioReview: result.data.audioReview,
+          htmlArtifact: result.data.htmlArtifact,
         });
       } else {
         const errorMsg = result.error || '语音提交失败';

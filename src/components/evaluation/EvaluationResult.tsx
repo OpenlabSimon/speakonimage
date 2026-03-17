@@ -8,8 +8,10 @@ import { Suggestions } from './Suggestions';
 import { HistoryComparison } from './HistoryComparison';
 import { CharacterFeedback } from './CharacterFeedback';
 import { PracticeGameButton } from './PracticeGameButton';
+import { CoachReviewPanel } from './CoachReviewPanel';
 import type { TranslationEvaluationScores, ExpressionEvaluationScores, GrammarErrorItem } from '@/types';
 import type { TeacherCharacterId } from '@/lib/characters/types';
+import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 
 type EvaluationData = TranslationEvaluationScores | ExpressionEvaluationScores;
 
@@ -34,6 +36,15 @@ interface EvaluationResultProps {
   topicType?: string;
   chinesePrompt?: string;
   inputMethod?: 'voice' | 'text';
+  coachReview?: {
+    teacher: TeacherSelection;
+    reviewMode: ReviewMode;
+    autoPlayAudio: boolean;
+    reviewText: string;
+    ttsText: string;
+    audioReview: AudioReview;
+    htmlArtifact: HtmlArtifact;
+  };
 }
 
 type TabType = 'overview' | 'feedback' | 'grammar' | 'improve' | 'history';
@@ -52,6 +63,7 @@ export function EvaluationResult({
   topicType,
   chinesePrompt,
   inputMethod,
+  coachReview,
 }: EvaluationResultProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -75,6 +87,18 @@ export function EvaluationResult({
 
   return (
     <>
+    {coachReview && (
+      <CoachReviewPanel
+        teacher={coachReview.teacher}
+        reviewMode={coachReview.reviewMode}
+        autoPlayAudio={coachReview.autoPlayAudio}
+        reviewText={coachReview.reviewText}
+        ttsText={coachReview.ttsText}
+        audioReview={coachReview.audioReview}
+        htmlArtifact={coachReview.htmlArtifact}
+        onRetry={onRetry}
+      />
+    )}
     {/* Character Feedback (async, loads independently) */}
     {characterId && topicType && chinesePrompt && (
       <CharacterFeedback
