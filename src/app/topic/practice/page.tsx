@@ -19,6 +19,7 @@ import { usePracticeGame } from '@/hooks/usePracticeGame';
 import { getCharacter } from '@/lib/characters';
 import { teacherSelectionFromCharacter } from '@/domains/teachers/character-bridge';
 import { saveLatestCoachRound } from '@/lib/coach-round-storage';
+import type { DraftHistoryEntry } from '@/lib/drafts';
 import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 import type {
   PracticeMode,
@@ -45,6 +46,9 @@ interface TopicData {
     vocabComplexity: number;
     grammarComplexity: number;
   };
+  seedDraft?: string;
+  seedDraftLabel?: string;
+  practiceGoal?: string;
 }
 
 interface EvaluationData {
@@ -72,6 +76,8 @@ interface AttemptData {
   evaluation: EvaluationData;
 }
 
+const DRAFT_HISTORY_STORAGE_KEY = 'topicDraftHistory';
+
 export default function TopicPracticePage() {
   const router = useRouter();
   const { data: authSession } = useSession();
@@ -96,6 +102,8 @@ export default function TopicPracticePage() {
   const [currentEvaluation, setCurrentEvaluation] =
     useState<EvaluationData | null>(null);
   const [attempts, setAttempts] = useState<AttemptData[]>([]);
+  const [draftHistory, setDraftHistory] = useState<DraftHistoryEntry[]>([]);
+  const [draftText, setDraftText] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Level downgrade modal state
@@ -124,16 +132,95 @@ export default function TopicPracticePage() {
       : null
   );
 
+  const buildSeededDraftHistory = useCallback((topic: TopicData): DraftHistoryEntry[] => {
+    if (!topic.seedDraft?.trim()) {
+      return [];
+    }
+
+    return [
+      {
+        id: 'assessment-seed',
+        text: topic.seedDraft.trim(),
+        source: 'assessment',
+        createdAt: new Date().toISOString(),
+        label: topic.seedDraftLabel || '初始草稿',
+      },
+    ];
+  }, []);
+
+  const persistDraftHistory = useCallback(async (entries: DraftHistoryEntry[], topicId?: string) => {
+    if (!isAuthenticated || !topicId) {
+      return;
+    }
+
+    try {
+      await fetch(`/api/user/topics/${topicId}/draft-history`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftHistory: entries }),
+      });
+    } catch (persistError) {
+      console.error('Persist draft history error:', persistError);
+    }
+  }, [isAuthenticated]);
+
+  const saveDraftHistory = useCallback((entries: DraftHistoryEntry[], topicId?: string) => {
+    localStorage.setItem(DRAFT_HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    setDraftHistory(entries);
+    void persistDraftHistory(entries, topicId);
+  }, [persistDraftHistory]);
+
   // Load topic data from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('currentTopic');
     if (stored) {
       try {
-        setTopicData(JSON.parse(stored));
+        const parsedTopic = JSON.parse(stored) as TopicData;
+        setTopicData(parsedTopic);
         // Load previous attempts if any
         const storedAttempts = localStorage.getItem('topicAttempts');
         if (storedAttempts) {
           setAttempts(JSON.parse(storedAttempts));
+        }
+
+        const storedDraftHistory = localStorage.getItem(DRAFT_HISTORY_STORAGE_KEY);
+        if (storedDraftHistory) {
+          const parsedDraftHistory = JSON.parse(storedDraftHistory) as DraftHistoryEntry[];
+          saveDraftHistory(parsedDraftHistory, parsedTopic.id);
+          setDraftText(parsedDraftHistory[parsedDraftHistory.length - 1]?.text || parsedTopic.seedDraft || '');
+        } else {
+          const seededDraftHistory = buildSeededDraftHistory(parsedTopic);
+          if (seededDraftHistory.length > 0) {
+            saveDraftHistory(seededDraftHistory, parsedTopic.id);
+            setDraftText(parsedTopic.seedDraft?.trim() || '');
+          }
+        }
+
+        if (isAuthenticated && parsedTopic.id) {
+          void (async () => {
+            try {
+              const response = await fetch(`/api/user/topics/${parsedTopic.id}/draft-history`);
+              const result = await response.json();
+              if (!response.ok || !result.success) {
+                return;
+              }
+
+              const remoteDraftHistory = result.data as DraftHistoryEntry[];
+              if (remoteDraftHistory.length > 0) {
+                localStorage.setItem(DRAFT_HISTORY_STORAGE_KEY, JSON.stringify(remoteDraftHistory));
+                setDraftHistory(remoteDraftHistory);
+                setDraftText(remoteDraftHistory[remoteDraftHistory.length - 1]?.text || parsedTopic.seedDraft || '');
+                return;
+              }
+
+              const seededDraftHistory = buildSeededDraftHistory(parsedTopic);
+              if (seededDraftHistory.length > 0) {
+                saveDraftHistory(seededDraftHistory, parsedTopic.id);
+              }
+            } catch (loadError) {
+              console.error('Load remote draft history error:', loadError);
+            }
+          })();
         }
       } catch {
         router.push('/');
@@ -141,13 +228,40 @@ export default function TopicPracticePage() {
     } else {
       router.push('/');
     }
-  }, [router]);
+  }, [buildSeededDraftHistory, isAuthenticated, router, saveDraftHistory]);
 
   // Save attempts to localStorage
   const saveAttempts = useCallback((newAttempts: AttemptData[]) => {
     localStorage.setItem('topicAttempts', JSON.stringify(newAttempts));
     setAttempts(newAttempts);
   }, []);
+
+  const appendDraftHistory = useCallback((text: string, source: DraftHistoryEntry['source'], label: string) => {
+    const normalized = text.trim();
+    if (!normalized) return;
+
+    setDraftHistory((prev) => {
+      const latest = prev[prev.length - 1];
+      if (latest?.text.trim() === normalized) {
+        return prev;
+      }
+
+      const next = [
+        ...prev,
+        {
+          id: `${Date.now()}-${prev.length + 1}`,
+          text: normalized,
+          source,
+          createdAt: new Date().toISOString(),
+          label,
+        },
+      ];
+      localStorage.setItem(DRAFT_HISTORY_STORAGE_KEY, JSON.stringify(next));
+      void persistDraftHistory(next, topicData?.id);
+      return next;
+    });
+    setDraftText(normalized);
+  }, [persistDraftHistory, topicData?.id]);
 
   // Update level history — only auto-downgrades, never auto-upgrades
   const updateLevelHistory = useCallback(
@@ -228,6 +342,7 @@ export default function TopicPracticePage() {
     htmlArtifact?: HtmlArtifact;
   }) => {
     setUserResponse(result.transcription);
+    appendDraftHistory(result.transcription, 'attempt', `第 ${attempts.length + 1} 次语音回答`);
 
     if (result.evaluation && result.overallScore !== undefined) {
       const evalData: EvaluationData = {
@@ -298,6 +413,7 @@ export default function TopicPracticePage() {
     if (!topicData) return;
 
     setUserResponse(text);
+    appendDraftHistory(text, 'attempt', `第 ${attempts.length + 1} 次文字回答`);
     setIsEvaluating(true);
     setError(null);
 
@@ -421,6 +537,7 @@ export default function TopicPracticePage() {
     await conversation.endSession();
     localStorage.removeItem('currentTopic');
     localStorage.removeItem('topicAttempts');
+    localStorage.removeItem(DRAFT_HISTORY_STORAGE_KEY);
     router.push('/');
   };
 
@@ -428,6 +545,14 @@ export default function TopicPracticePage() {
   const playRecording = (audioUrl: string) => {
     const audio = new Audio(audioUrl);
     audio.play();
+  };
+
+  const handleUseDraft = (text: string) => {
+    setDraftText(text);
+    setInputMode('text');
+    setCurrentEvaluation(null);
+    setUserResponse(null);
+    setError(null);
   };
 
   const topicContent = getTopicContent();
@@ -669,6 +794,64 @@ export default function TopicPracticePage() {
             </div>
           )}
 
+        {topicData.practiceGoal && (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="text-sm font-semibold text-emerald-800 mb-1">
+              这一轮练习目标
+            </div>
+            <div className="text-sm text-emerald-700">
+              {topicData.practiceGoal}
+            </div>
+          </div>
+        )}
+
+        {draftHistory.length > 0 && (
+          <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  可持续优化的草稿历史
+                </h2>
+                <p className="text-sm text-gray-500">
+                  评估输入和后续每次回答都会保留下来，方便你继续改写
+                </p>
+              </div>
+              <div className="text-sm text-gray-400">
+                共 {draftHistory.length} 版
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {draftHistory.slice().reverse().slice(0, 4).map((draft, index) => (
+                <div
+                  key={draft.id}
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gray-200 px-2 text-xs font-medium text-gray-700">
+                        {draftHistory.length - index}
+                      </span>
+                      <span className="text-sm font-medium text-gray-800">
+                        {draft.label}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleUseDraft(draft.text)}
+                      className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
+                    >
+                      带入编辑框
+                    </button>
+                  </div>
+                  <div className="text-sm text-gray-600 whitespace-pre-wrap line-clamp-4">
+                    {draft.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Error Display */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
@@ -731,6 +914,7 @@ export default function TopicPracticePage() {
             <div className="space-y-4">
               <TextInput
                 onSubmit={handleTextSubmit}
+                initialValue={draftText}
                 placeholder="在这里输入你的英语回答..."
                 disabled={isEvaluating}
               />

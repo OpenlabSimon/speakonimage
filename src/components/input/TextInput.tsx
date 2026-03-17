@@ -1,15 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface TextInputProps {
   onSubmit: (text: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  initialValue?: string;
 }
 
-export function TextInput({ onSubmit, disabled, placeholder }: TextInputProps) {
+export function TextInput({ onSubmit, disabled, placeholder, initialValue = '' }: TextInputProps) {
   const [text, setText] = useState('');
+
+  useEffect(() => {
+    setText(initialValue);
+  }, [initialValue]);
 
   const handleSubmit = () => {
     if (text.trim()) {

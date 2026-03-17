@@ -10,6 +10,7 @@ import { useLevelHistory } from '@/hooks/useLevelHistory';
 import { useCoachPreferences } from '@/hooks/useCoachPreferences';
 import { CoachQuickSummaryCard } from '@/components/evaluation/CoachQuickSummaryCard';
 import type { CEFRLevel } from '@/types';
+import type { DraftHistoryEntry } from '@/lib/drafts';
 
 type PageStep = 'assessment' | 'post-assessment' | 'topic-input';
 
@@ -27,6 +28,7 @@ export default function Home() {
   const [step, setStep] = useState<PageStep>('assessment');
   const [inputText, setInputText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isStartingIntroPractice, setIsStartingIntroPractice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showManualLevelSelect, setShowManualLevelSelect] = useState(false);
   const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
@@ -92,8 +94,9 @@ export default function Home() {
   };
 
   // Handle "继续练习自我介绍" — create synthetic intro topic and navigate
-  const handlePracticeIntro = () => {
+  const handlePracticeIntro = async () => {
     const assessedLevel = getCurrentLevel();
+    const seedDraft = history?.introductionText?.trim() || '';
     const introTopic = {
       type: 'expression',
       chinesePrompt: '用英语做一个完整的自我介绍，包括你的基本信息、工作或学习情况、兴趣爱好等。',
@@ -109,11 +112,58 @@ export default function Home() {
         vocabComplexity: 0,
         grammarComplexity: 0,
       },
+      seedDraft,
+      seedDraftLabel: '评估版自我介绍',
+      practiceGoal: '在已有自我介绍基础上继续补充、改写并优化表达',
     };
 
-    localStorage.setItem('currentTopic', JSON.stringify(introTopic));
-    localStorage.removeItem('topicAttempts');
-    router.push('/topic/practice');
+    setError(null);
+    setIsStartingIntroPractice(true);
+
+    try {
+      let nextTopic: typeof introTopic & { id?: string } = introTopic;
+
+      if (authStatus === 'authenticated') {
+        const draftHistory: DraftHistoryEntry[] = seedDraft
+          ? [{
+              id: 'assessment-seed',
+              text: seedDraft,
+              source: 'assessment',
+              createdAt: new Date().toISOString(),
+              label: '评估版自我介绍',
+            }]
+          : [];
+
+        const response = await fetch('/api/user/topics/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: introTopic.type,
+            originalInput: 'assessment:introduction-practice',
+            topicContent: introTopic,
+            difficultyMetadata: introTopic.difficultyMetadata,
+            draftHistory,
+          }),
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || '创建自我介绍练习失败');
+        }
+
+        nextTopic = result.data;
+      }
+
+      localStorage.setItem('currentTopic', JSON.stringify(nextTopic));
+      localStorage.removeItem('topicAttempts');
+      localStorage.removeItem('topicDraftHistory');
+      router.push('/topic/practice');
+    } catch (err) {
+      console.error('Start intro practice error:', err);
+      setError(err instanceof Error ? err.message : '创建自我介绍练习失败');
+    } finally {
+      setIsStartingIntroPractice(false);
+    }
   };
 
   // Handle generate topic
@@ -146,6 +196,7 @@ export default function Home() {
 
       // Store topic data in localStorage (survives refresh)
       localStorage.setItem('currentTopic', JSON.stringify(result.data));
+      localStorage.removeItem('topicDraftHistory');
 
       // Navigate to topic page
       router.push('/topic/practice');
@@ -275,13 +326,14 @@ export default function Home() {
             <div className="grid grid-cols-1 gap-4">
               <button
                 onClick={handlePracticeIntro}
-                className="p-5 rounded-xl border-2 border-emerald-200 hover:border-emerald-500 bg-emerald-50 hover:bg-emerald-100 transition-all text-left"
+                disabled={isStartingIntroPractice}
+                className="p-5 rounded-xl border-2 border-emerald-200 hover:border-emerald-500 bg-emerald-50 hover:bg-emerald-100 transition-all text-left disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <div className="text-lg font-semibold text-emerald-800 mb-1">
-                  继续练习自我介绍
+                  {isStartingIntroPractice ? '正在建立练习记录...' : '继续优化这段自我介绍'}
                 </div>
                 <div className="text-sm text-emerald-600">
-                  用刚才的自我介绍内容进行口语练习，获得详细反馈
+                  带着刚才的输入继续练习，把每一版都当作可迭代历史
                 </div>
               </button>
               <button
