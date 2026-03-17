@@ -73,22 +73,21 @@ describe('POST /api/coach/round', () => {
     expect(data.data.practiceMode).toBe('translation_text');
     expect(data.data.skillDomain).toBe('translation');
     expect(data.data.teacher).toEqual({ soulId: 'default' });
-    expect(data.data.review).toEqual({ mode: 'text', autoPlayAudio: false });
+    expect(data.data.review).toEqual({ mode: 'all', autoPlayAudio: true });
     expect(typeof data.data.reviewText).toBe('string');
     expect(typeof data.data.ttsText).toBe('string');
     expect(data.data.reviewText.length).toBeGreaterThan(20);
     expect(data.data.ttsText.length).toBeGreaterThan(20);
     expect(data.data.audioReview).toEqual({
-      enabled: false,
+      enabled: true,
       provider: 'elevenlabs',
-      status: 'skipped',
-      reason: 'review mode does not require audio',
+      status: 'failed',
+      voiceId: 'EXAVITQu4vr4xnSDxMaL',
+      text: data.data.ttsText,
+      error: 'ELEVENLABS_API_KEY not configured',
     });
-    expect(data.data.htmlArtifact).toEqual({
-      enabled: false,
-      status: 'skipped',
-      reason: 'review mode does not require html',
-    });
+    expect(data.data.htmlArtifact.enabled).toBe(true);
+    expect(data.data.htmlArtifact.status).toBe('generated');
     expect(data.data.submissionId).toBeUndefined();
   });
 
@@ -127,8 +126,9 @@ describe('POST /api/coach/round', () => {
     expect(data.data.skillDomain).toBe('spoken_expression');
     expect(data.data.reviewText).toContain('口语');
     expect(data.data.ttsText).toContain('口语');
-    expect(data.data.audioReview.status).toBe('skipped');
-    expect(data.data.htmlArtifact.status).toBe('skipped');
+    expect(data.data.review).toEqual({ mode: 'all', autoPlayAudio: true });
+    expect(data.data.audioReview.status).toBe('failed');
+    expect(data.data.htmlArtifact.status).toBe('generated');
   });
 
   it('accepts explicit teacher soul and review mode preferences', async () => {

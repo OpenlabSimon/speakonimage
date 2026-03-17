@@ -42,9 +42,11 @@ export interface MessageMetadata {
   transcriptionConfidence?: number;
 
   // For assistant messages (evaluation)
+  kind?: 'coach_review' | 'evaluation_summary';
   overallScore?: number;
   estimatedCefr?: CEFRLevel;
   evaluationType?: 'translation' | 'expression';
+  ttsText?: string;
 
   // For system messages
   systemMessageType?: 'topic_context' | 'profile_injection' | 'context_summary';

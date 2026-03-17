@@ -6,6 +6,7 @@ export function getLLMProvider(): LLMProvider {
   const geminiKey = process.env.GEMINI_API_KEY;
   const baseUrl = process.env.GEMINI_BASE_URL;
   const model = process.env.GEMINI_MODEL;
+  const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || '90000');
 
   if (geminiKey) {
     return new GeminiProvider({
@@ -14,6 +15,7 @@ export function getLLMProvider(): LLMProvider {
       model: model || 'gemini-3-pro-preview',
       temperature: 0.7,
       maxRetries: 1,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : 90000,
     });
   }
 

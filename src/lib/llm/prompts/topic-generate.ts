@@ -19,10 +19,31 @@ const GrammarHintSchema = z.object({
   example: z.string().describe('Example sentence using this pattern'),
 });
 
+const DifficultyScoreSchema = z
+  .preprocess((value) => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (!normalized) return undefined;
+
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }, z.number().optional())
+  .transform((value) => {
+    const normalized = value ?? 0.5;
+    return Math.min(1, Math.max(0, normalized));
+  });
+
 const DifficultyMetadataSchema = z.object({
   targetCefr: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']),
-  vocabComplexity: z.number().min(0).max(1),
-  grammarComplexity: z.number().min(0).max(1),
+  vocabComplexity: DifficultyScoreSchema,
+  grammarComplexity: DifficultyScoreSchema,
 });
 
 // ============================================

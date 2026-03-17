@@ -5,6 +5,27 @@ import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { DraftHistorySchema } from '@/lib/drafts';
 import type { ApiResponse } from '@/types';
 
+const DifficultyScoreSchema = z
+  .preprocess((value) => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (!normalized) return undefined;
+
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }, z.number().optional())
+  .transform((value) => {
+    const normalized = value ?? 0.5;
+    return Math.min(1, Math.max(0, normalized));
+  });
+
 const SeedTopicRequestSchema = z.object({
   type: z.enum(['translation', 'expression']),
   originalInput: z.string().min(1).max(500),
@@ -27,8 +48,8 @@ const SeedTopicRequestSchema = z.object({
     })).optional(),
     difficultyMetadata: z.object({
       targetCefr: z.string(),
-      vocabComplexity: z.number(),
-      grammarComplexity: z.number(),
+      vocabComplexity: DifficultyScoreSchema,
+      grammarComplexity: DifficultyScoreSchema,
     }),
     seedDraft: z.string().optional(),
     seedDraftLabel: z.string().optional(),
@@ -36,8 +57,8 @@ const SeedTopicRequestSchema = z.object({
   }),
   difficultyMetadata: z.object({
     targetCefr: z.string(),
-    vocabComplexity: z.number(),
-    grammarComplexity: z.number(),
+    vocabComplexity: DifficultyScoreSchema,
+    grammarComplexity: DifficultyScoreSchema,
   }).optional(),
   draftHistory: DraftHistorySchema.optional(),
 });

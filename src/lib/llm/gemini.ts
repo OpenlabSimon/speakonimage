@@ -28,7 +28,7 @@ export class GeminiProvider implements LLMProvider {
     this.model = config.model || 'gemini-3-pro-preview';
     this.maxRetries = config.maxRetries ?? 1;
     this.temperature = config.temperature ?? 0.7;
-    this.timeoutMs = config.timeoutMs ?? 30000;
+    this.timeoutMs = config.timeoutMs ?? 90000;
   }
 
   async generateJSON<T>(
@@ -62,6 +62,15 @@ export class GeminiProvider implements LLMProvider {
           },
           { signal: controller.signal }
         );
+      } catch (error) {
+        if (controller.signal.aborted) {
+          throw new LLMError(
+            `LLM request timed out after ${Math.round(this.timeoutMs / 1000)}s`,
+            this.name,
+            error as Error
+          );
+        }
+        throw error;
       } finally {
         clearTimeout(timeout);
       }
@@ -121,6 +130,15 @@ export class GeminiProvider implements LLMProvider {
         },
         { signal: controller.signal }
       );
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new LLMError(
+          `LLM request timed out after ${Math.round(this.timeoutMs / 1000)}s`,
+          this.name,
+          error as Error
+        );
+      }
+      throw error;
     } finally {
       clearTimeout(timeout);
     }

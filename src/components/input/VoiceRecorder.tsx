@@ -57,7 +57,7 @@ export function VoiceRecorder({
   cefrLevel,
   teacher,
   reviewMode = 'text',
-  autoPlayAudio = false,
+  autoPlayAudio = true,
 }: VoiceRecorderProps) {
   const suggestedDuration = getSuggestedDuration(cefrLevel);
   const pendingAutoStopBlobRef = useRef<Blob | null>(null);

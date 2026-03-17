@@ -29,9 +29,11 @@ interface ChatMessage {
 interface MessageMetadata {
   inputMethod?: 'voice' | 'text';
   audioUrl?: string;
+  kind?: 'coach_review' | 'evaluation_summary';
   overallScore?: number;
   estimatedCefr?: string;
   evaluationType?: 'translation' | 'expression';
+  ttsText?: string;
 }
 
 interface SessionExtractionResult {

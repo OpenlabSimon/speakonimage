@@ -220,6 +220,17 @@ export default function Home() {
     );
   }
 
+  if (authStatus !== 'authenticated') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">...</div>
+          <div className="text-gray-600">正在初始化本机学习档案...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       {/* Top Navigation */}

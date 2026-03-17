@@ -1,4 +1,4 @@
-import { DEFAULT_REVIEW_MODE } from '@/domains/teachers/defaults';
+import { DEFAULT_AUTO_PLAY_AUDIO, DEFAULT_REVIEW_MODE } from '@/domains/teachers/defaults';
 import type { ReviewMode } from '@/domains/teachers/types';
 import { DEFAULT_CHARACTER_ID, isValidCharacterId } from '@/lib/characters';
 import type { TeacherCharacterId } from '@/lib/characters/types';
@@ -33,12 +33,21 @@ export function normalizeCoachPreferences(value: unknown): CoachPreferences {
 
   return {
     reviewMode: isReviewMode(record?.reviewMode) ? record.reviewMode : DEFAULT_REVIEW_MODE,
-    autoPlayAudio: typeof record?.autoPlayAudio === 'boolean' ? record.autoPlayAudio : false,
+    autoPlayAudio:
+      typeof record?.autoPlayAudio === 'boolean' ? record.autoPlayAudio : DEFAULT_AUTO_PLAY_AUDIO,
     characterId:
       typeof record?.characterId === 'string' && isValidCharacterId(record.characterId)
         ? record.characterId
         : DEFAULT_CHARACTER_ID,
     voiceId,
+  };
+}
+
+export function forceDefaultReviewPreferences(value: CoachPreferences): CoachPreferences {
+  return {
+    ...value,
+    reviewMode: DEFAULT_REVIEW_MODE,
+    autoPlayAudio: DEFAULT_AUTO_PLAY_AUDIO,
   };
 }
 

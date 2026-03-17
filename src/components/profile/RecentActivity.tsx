@@ -35,20 +35,16 @@ export function RecentActivity({ submissions }: RecentActivityProps) {
         const typeLabel = sub.topic?.type === 'translation' ? '翻译' : '表达';
 
         return (
-          <div key={sub.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-            <div className="flex-1 min-w-0">
+          <div key={sub.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
                   {typeLabel}
                 </span>
-                <span className="text-sm text-gray-800 truncate">{topicLabel}</span>
+                <span className="text-xs text-gray-500">
+                  {dateStr} {timeStr}
+                </span>
               </div>
-              <div className="text-xs text-gray-400 mt-0.5 truncate">
-                {sub.transcribedText.slice(0, 50)}
-                {sub.transcribedText.length > 50 ? '...' : ''}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 ml-3 shrink-0">
               {score != null && (
                 <span className={`text-sm font-semibold ${
                   score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-500'
@@ -56,9 +52,18 @@ export function RecentActivity({ submissions }: RecentActivityProps) {
                   {score}
                 </span>
               )}
-              <span className="text-xs text-gray-400">
-                {dateStr} {timeStr}
-              </span>
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs font-medium text-gray-500">题目</div>
+              <div className="mt-1 text-sm text-gray-800 break-words">{topicLabel}</div>
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs font-medium text-gray-500">本次提交</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-900">
+                {sub.transcribedText}
+              </div>
             </div>
           </div>
         );

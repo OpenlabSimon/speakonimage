@@ -17,19 +17,8 @@ export function UserMenu() {
 
   if (!session) {
     return (
-      <div className="flex gap-2">
-        <Link
-          href="/auth/login"
-          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-        >
-          登录
-        </Link>
-        <Link
-          href="/auth/register"
-          className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-        >
-          注册
-        </Link>
+      <div className="px-3 py-2 text-sm text-gray-500">
+        初始化中...
       </div>
     );
   }
@@ -38,8 +27,8 @@ export function UserMenu() {
   const name = session.user?.name;
   const email = session.user?.email;
   const image = session.user?.image;
-  const displayName = name || email || '游客';
-  const initial = isGuest ? '游' : (name || email || '?').charAt(0).toUpperCase();
+  const displayName = isGuest ? '本机用户' : (name || email || '用户');
+  const initial = isGuest ? '本' : (name || email || '?').charAt(0).toUpperCase();
 
   return (
     <div className="relative">
@@ -75,37 +64,29 @@ export function UserMenu() {
                 {displayName}
               </div>
               <div className="text-xs text-gray-500">
-                {isGuest ? '游客模式' : '已登录'}
+                {isGuest ? '本机单用户模式' : '已登录'}
               </div>
             </div>
 
             <div className="py-1">
-              {isGuest ? (
-                <Link
-                  href="/auth/upgrade"
-                  onClick={() => setIsOpen(false)}
-                  className="block px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 font-medium"
-                >
-                  升级账号
-                </Link>
-              ) : (
-                <Link
-                  href="/profile"
-                  onClick={() => setIsOpen(false)}
-                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                >
-                  我的档案
-                </Link>
-              )}
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  signOut({ callbackUrl: '/' });
-                }}
-                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              <Link
+                href="/profile"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                退出
-              </button>
+                我的档案
+              </Link>
+              {!isGuest && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    signOut({ callbackUrl: '/' });
+                  }}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  退出
+                </button>
+              )}
             </div>
           </div>
         </>

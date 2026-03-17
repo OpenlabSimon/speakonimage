@@ -107,6 +107,14 @@ export async function runCoachingRound(
     profileContext,
   });
 
+  const { reviewText, ttsText } = buildReviewTextOutput({
+    teacher,
+    evaluation,
+    overallScore,
+    skillDomain,
+    userResponse: input.userResponse,
+  });
+
   let submissionId: string | undefined;
   let sessionId = input.persistence?.sessionId;
 
@@ -122,19 +130,13 @@ export async function runCoachingRound(
       topicType: input.topicType,
       suggestedVocab: input.topicContent.suggestedVocab,
       sessionId,
+      coachReviewText: reviewText,
+      ttsText,
     });
 
     submissionId = persisted.submissionId;
     sessionId = persisted.sessionId;
   }
-
-  const { reviewText, ttsText } = buildReviewTextOutput({
-    teacher,
-    evaluation,
-    overallScore,
-    skillDomain,
-    userResponse: input.userResponse,
-  });
   const audioReview = await buildAudioReview({
     teacher,
     review,

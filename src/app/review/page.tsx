@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ReviewProgress } from '@/components/review/ReviewProgress';
 import { ReviewCard } from '@/components/review/ReviewCard';
@@ -19,7 +18,6 @@ interface ReviewItem {
 
 export default function ReviewPage() {
   const { status } = useSession();
-  const router = useRouter();
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -27,12 +25,6 @@ export default function ReviewPage() {
   const [rating, setRating] = useState(false);
   const [completed, setCompleted] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
-
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/login');
-    }
-  }, [status, router]);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -94,6 +86,17 @@ export default function ReviewPage() {
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">...</div>
           <div className="text-gray-600">加载中...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status !== 'authenticated') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">...</div>
+          <div className="text-gray-600">正在初始化本机学习档案...</div>
         </div>
       </div>
     );

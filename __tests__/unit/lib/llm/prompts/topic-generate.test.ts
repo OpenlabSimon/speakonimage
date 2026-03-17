@@ -129,7 +129,7 @@ describe('TranslationTopicSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects vocabComplexity outside 0-1 range', () => {
+  it('clamps vocabComplexity outside 0-1 range', () => {
     const result = TranslationTopicSchema.safeParse({
       ...translationFixture,
       difficultyMetadata: {
@@ -137,7 +137,36 @@ describe('TranslationTopicSchema', () => {
         vocabComplexity: 1.5,
       },
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(1);
+  });
+
+  it('accepts numeric strings for difficultyMetadata scores', () => {
+    const result = TranslationTopicSchema.safeParse({
+      ...translationFixture,
+      difficultyMetadata: {
+        ...translationFixture.difficultyMetadata,
+        vocabComplexity: '0.5',
+        grammarComplexity: '0.4',
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(0.5);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0.4);
+  });
+
+  it('falls back to 0.5 when difficultyMetadata scores are non-numeric strings', () => {
+    const result = TranslationTopicSchema.safeParse({
+      ...translationFixture,
+      difficultyMetadata: {
+        ...translationFixture.difficultyMetadata,
+        vocabComplexity: 'medium',
+        grammarComplexity: 'hard',
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(0.5);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0.5);
   });
 
   it('rejects an invalid CEFR difficulty value', () => {
@@ -177,7 +206,7 @@ describe('ExpressionTopicSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects grammarComplexity outside 0-1 range', () => {
+  it('clamps grammarComplexity outside 0-1 range', () => {
     const result = ExpressionTopicSchema.safeParse({
       ...expressionFixture,
       difficultyMetadata: {
@@ -185,7 +214,8 @@ describe('ExpressionTopicSchema', () => {
         grammarComplexity: -0.1,
       },
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0);
   });
 });
 

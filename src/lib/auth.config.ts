@@ -51,7 +51,6 @@ export const authConfig: NextAuthConfig = {
 
     authorized({ auth, request: { nextUrl } }) {
       const isAuthenticated = !!auth?.user;
-      const isProtectedPage = nextUrl.pathname.startsWith('/profile') || nextUrl.pathname.startsWith('/review');
       const isProtectedApi = nextUrl.pathname.startsWith('/api/user/') || nextUrl.pathname.startsWith('/api/review');
 
       if (!isAuthenticated && isProtectedApi) {
@@ -59,12 +58,6 @@ export const authConfig: NextAuthConfig = {
           { success: false, error: 'Authentication required' },
           { status: 401 }
         );
-      }
-
-      if (!isAuthenticated && isProtectedPage) {
-        const loginUrl = new URL('/auth/login', nextUrl.origin);
-        loginUrl.searchParams.set('callbackUrl', nextUrl.pathname);
-        return Response.redirect(loginUrl);
       }
 
       return true;

@@ -1,8 +1,6 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import Link from 'next/link';
 import { useProfile } from '@/hooks/useProfile';
 import { useCoachPreferences } from '@/hooks/useCoachPreferences';
@@ -11,11 +9,12 @@ import { StatsOverview } from '@/components/profile/StatsOverview';
 import { GrammarErrorList } from '@/components/profile/GrammarErrorList';
 import { VocabSummary } from '@/components/profile/VocabSummary';
 import { RecentActivity } from '@/components/profile/RecentActivity';
+import { RecentTopicHistory } from '@/components/profile/RecentTopicHistory';
+import { RecentCoachFeedback } from '@/components/profile/RecentCoachFeedback';
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
-  const router = useRouter();
-  const { data: profileData, loading, error } = useProfile();
+  const { data: profileData, loading, error } = useProfile(status === 'authenticated');
   const {
     characterId,
     setCharacterId,
@@ -28,13 +27,7 @@ export default function ProfilePage() {
     isRemoteBacked,
   } = useCoachPreferences();
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/login');
-    }
-  }, [status, router]);
-
-  if (status === 'loading' || loading) {
+  if (loading && !profileData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -45,12 +38,19 @@ export default function ProfilePage() {
     );
   }
 
-  if (!session) {
-    return null;
+  if (status === 'unauthenticated' && !profileData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">...</div>
+          <div className="text-gray-600">正在初始化本机学习档案...</div>
+        </div>
+      </div>
+    );
   }
 
-  const email = session.user?.email || '';
-  const initial = email.charAt(0).toUpperCase();
+  const email = session?.user?.email || '本机用户';
+  const initial = session?.user?.isGuest ? '本' : email.charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -128,9 +128,21 @@ export default function ProfilePage() {
               <VocabSummary vocab={profileData.profile.vocabularyProfile} />
             </div>
 
+            {/* Recent Inputs */}
+            <div className="bg-white rounded-2xl shadow-lg p-5">
+              <h2 className="text-base font-semibold text-gray-800 mb-3">历史输入与草稿</h2>
+              <RecentTopicHistory topics={profileData.recentTopics} />
+            </div>
+
+            {/* Coach Feedback */}
+            <div className="bg-white rounded-2xl shadow-lg p-5">
+              <h2 className="text-base font-semibold text-gray-800 mb-3">历史点评</h2>
+              <RecentCoachFeedback feedback={profileData.recentCoachFeedback} />
+            </div>
+
             {/* Recent Activity */}
             <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">最近练习</h2>
+              <h2 className="text-base font-semibold text-gray-800 mb-3">最近提交记录</h2>
               <RecentActivity submissions={profileData.recentSubmissions} />
             </div>
           </>

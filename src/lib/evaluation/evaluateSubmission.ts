@@ -30,6 +30,8 @@ export interface PersistParams {
   topicType: 'translation' | 'expression';
   suggestedVocab: { word: string }[];
   sessionId?: string;
+  coachReviewText?: string;
+  ttsText?: string;
 }
 
 export interface PersistResult {
@@ -84,7 +86,7 @@ export async function getProfileContext(accountId: string): Promise<string | nul
 export async function persistSubmission(params: PersistParams): Promise<PersistResult> {
   const {
     topicId, accountId, speakerId, inputMethod, userResponse,
-    audioUrl, evaluation, overallScore, topicType, suggestedVocab, sessionId,
+    audioUrl, evaluation, overallScore, topicType, suggestedVocab, sessionId, coachReviewText, ttsText,
   } = params;
 
   // Get attempt number
@@ -203,6 +205,22 @@ export async function persistSubmission(params: PersistParams): Promise<PersistR
           evaluationType: topicType,
         },
       });
+
+      if (coachReviewText) {
+        await addMessage({
+          sessionId: activeSessionId,
+          role: 'assistant',
+          content: coachReviewText,
+          contentType: 'evaluation',
+          metadata: {
+            kind: 'coach_review',
+            overallScore,
+            estimatedCefr: evaluation.overallCefrEstimate,
+            evaluationType: topicType,
+            ttsText,
+          },
+        });
+      }
     } catch (err) {
       console.error('Failed to add messages to session:', err);
     }
