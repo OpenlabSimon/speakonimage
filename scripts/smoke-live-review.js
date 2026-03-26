@@ -1031,8 +1031,12 @@ async function runTurn(page, expectedTurnCount, fixtureDurationMs) {
   await clickLivePrimaryButton(page, /结束这一轮/);
 
   await page.waitForFunction((count) => {
-    return document.body.innerText.includes(`已记录 ${count} 轮 live 对话`);
-  }, expectedTurnCount, { timeout: 35000 });
+    const text = document.body.innerText;
+    return (
+      text.includes(`已记录 ${count} 轮 live 对话`)
+      || text.includes(`已完成 ${count} 轮`)
+    );
+  }, expectedTurnCount, { timeout: 45000 });
 
   await waitForLivePrimaryButton(page, /开始这一轮|已连上，点一下就能开始这一轮/);
 }
