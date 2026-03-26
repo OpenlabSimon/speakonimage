@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { AppShell } from '@/components/layout/AppShell';
 import { useCoachPreferences } from '@/hooks/useCoachPreferences';
 import { teacherSelectionFromCharacter } from '@/domains/teachers/character-bridge';
 import { getApiErrorMessage, parseJsonResponse } from '@/lib/http/parse-json-response';
@@ -284,7 +285,7 @@ export default function SessionHistoryDetailPage() {
               href="/profile"
               className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
-              返回历史与设置
+              返回 Review
             </Link>
           </div>
         </div>
@@ -293,23 +294,28 @@ export default function SessionHistoryDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#f8fafc_38%,_#f8fafc_100%)]">
-      <nav className="border-b border-slate-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <Link href="/profile" className="text-lg font-semibold text-slate-900">
-            SpeakOnImage
-          </Link>
+    <AppShell
+      activeNav="review"
+      title="Session detail"
+      description="回看单条会话的完整消息流和这轮最终点评。"
+      headerActions={(
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={() => router.push('/profile')}
             className="min-h-11 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           >
-            返回历史与设置
+            返回 Review
           </button>
+          <Link
+            href="/coach"
+            className="min-h-11 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            打开 Coach
+          </Link>
         </div>
-      </nav>
-
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+      )}
+    >
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
@@ -529,7 +535,6 @@ export default function SessionHistoryDetailPage() {
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </AppShell>
   );
 }

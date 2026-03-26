@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { AppShell } from '@/components/layout/AppShell';
 import { ChinesePromptCard } from '@/components/topic/ChinesePromptCard';
 import { VocabPanel } from '@/components/topic/VocabPanel';
 import { GrammarPanel } from '@/components/topic/GrammarCard';
@@ -1167,7 +1168,11 @@ function TopicPracticePageContent() {
 
   if (isChatFirstView) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#f8fafc_38%,_#f8fafc_100%)]">
+      <AppShell
+        activeNav="chat"
+        title="Live chat"
+        description="这里是 chat-first 主路径。先围绕当前话题自然聊几轮，再结束并生成最终点评。"
+      >
         <div className="mx-auto max-w-6xl px-4 py-6">
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
@@ -1364,14 +1369,18 @@ function TopicPracticePageContent() {
             </div>
           </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   // Show evaluation result
   if (currentEvaluation && userResponse) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <AppShell
+        activeNav="practice"
+        title="Practice result"
+        description="完整批改结果会保留在 Practice 里；如果是多轮 live 复盘，请去 Review 回看会话。"
+      >
         <div className="max-w-3xl mx-auto px-4 py-8">
           {/* Header with attempt count */}
           <div className="flex items-center justify-between mb-6">
@@ -1521,12 +1530,16 @@ function TopicPracticePageContent() {
           characterEmoji={characterId ? getCharacter(characterId).emoji : undefined}
           onClose={practiceGame.closeGame}
         />
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <AppShell
+      activeNav="practice"
+      title="Practice"
+      description="这里保留经典模式、结构化提交和完整批改。实时对话模式已经被收进 Chat 主路径。"
+    >
       <div className="max-w-3xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -1839,7 +1852,7 @@ function TopicPracticePageContent() {
           onManualSelect={handleManualLevelSelect}
         />
       )}
-    </div>
+    </AppShell>
   );
 }
 

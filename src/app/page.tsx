@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { UserMenu } from '@/components/ui/UserMenu';
+import { AppShell } from '@/components/layout/AppShell';
 import { IntroductionInput, type IntroductionAssessmentResult } from '@/components/assessment/IntroductionInput';
 import { LocalPracticeMigrationCard } from '@/components/migration/LocalPracticeMigrationCard';
 import { useRecorder } from '@/hooks/useRecorder';
@@ -466,25 +466,25 @@ function HomePageContent() {
 
   if (!isClassicView) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eff6ff,_#f8fafc_40%,_#f8fafc_100%)]">
-        <nav className="border-b border-slate-200/80 bg-white/90 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-            <div>
-              <div className="text-lg font-semibold text-slate-900">SpeakOnImage</div>
-              <div className="text-xs text-slate-500">
-                AI English coach for short voice conversations
-              </div>
+      <AppShell
+        activeNav="chat"
+        title="Chat"
+        description="默认先进入实时对话。先围绕一个话题聊几轮，结束后再去 Review 看最终复盘。"
+        headerActions={(
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+              当前等级 {getCurrentLevel()}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
-                当前等级 {getCurrentLevel()}
-              </div>
-              <UserMenu />
-            </div>
+            <button
+              onClick={() => router.push('/?view=classic')}
+              className="min-h-11 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              打开 Practice
+            </button>
           </div>
-        </nav>
-
-        <div className="mx-auto max-w-5xl px-4 py-10">
+        )}
+      >
+        <div className="mx-auto max-w-5xl">
           <div className="mx-auto max-w-3xl">
             <div className="text-center">
               <div className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
@@ -639,7 +639,10 @@ function HomePageContent() {
 
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm">
               <Link href="/profile" className="rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50">
-                历史与设置
+                打开 Review
+              </Link>
+              <Link href="/coach" className="rounded-full border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50">
+                选择 Coach
               </Link>
               <button
                 onClick={() => router.push('/?view=classic')}
@@ -650,48 +653,52 @@ function HomePageContent() {
             </div>
           </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
-      {/* Top Navigation */}
-      <nav className="bg-white shadow-sm">
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <h1 className="text-lg font-bold text-gray-900 sm:text-xl">SpeakOnImage</h1>
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
-            {history && step === 'topic-input' && (
-              <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
-                <span className="text-gray-500">等级:</span>
-                <span className="font-semibold text-blue-600">
-                  {history.currentLevel}
-                </span>
-                {history.currentLevel !== 'C2' && (
+    <AppShell
+      activeNav="practice"
+      title="Practice"
+      description="结构化输入、分级评估和完整批改都放在这里。它是 Chat 之外的专项训练入口。"
+      headerActions={(
+        <div className="flex flex-wrap items-center gap-3">
+          {history && step === 'topic-input' && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-gray-500">等级:</span>
+              <span className="font-semibold text-blue-600">
+                {history.currentLevel}
+              </span>
+              {history.currentLevel !== 'C2' && (
                 <button
                   onClick={upgradeLevel}
                   className="min-h-11 rounded-lg px-2 text-xs font-medium text-green-600 hover:text-green-800"
-                  >
-                    升级
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setAssessmentSummary(null);
-                    setStep('assessment');
-                  }}
-                  className="min-h-11 rounded-lg px-2 text-xs text-gray-400 underline hover:text-gray-600"
                 >
-                  重新评估
+                  升级
                 </button>
-              </div>
-            )}
-            <UserMenu />
-          </div>
+              )}
+              <button
+                onClick={() => {
+                  setAssessmentSummary(null);
+                  setStep('assessment');
+                }}
+                className="min-h-11 rounded-lg px-2 text-xs text-gray-400 underline hover:text-gray-600"
+              >
+                重新评估
+              </button>
+            </div>
+          )}
+          <Link
+            href="/"
+            className="min-h-11 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            回到 Chat
+          </Link>
         </div>
-      </nav>
-
-      <div className="max-w-2xl mx-auto px-4 py-6 sm:py-8">
+      )}
+    >
+      <div className="max-w-2xl mx-auto">
         <LocalPracticeMigrationCard />
 
         {/* Header */}
@@ -983,7 +990,7 @@ function HomePageContent() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }
 

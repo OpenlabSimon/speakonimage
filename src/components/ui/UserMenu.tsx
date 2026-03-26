@@ -66,7 +66,14 @@ export function UserMenu() {
                 onClick={() => setIsOpen(false)}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                历史与设置
+                Review
+              </Link>
+              <Link
+                href="/coach"
+                onClick={() => setIsOpen(false)}
+                className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Coach
               </Link>
               {!isGuest && (
                 <button

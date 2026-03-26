@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import { AppShell } from '@/components/layout/AppShell';
 import { ReviewProgress } from '@/components/review/ReviewProgress';
 import { ReviewCard } from '@/components/review/ReviewCard';
 import { RatingButtons } from '@/components/review/RatingButtons';
@@ -106,20 +107,28 @@ export default function ReviewPage() {
   const isDone = currentIndex >= items.length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
-            SpeakOnImage
+    <AppShell
+      activeNav="review"
+      title="Flashcard review"
+      description="这里保留的是间隔复习卡片，和会话级 final review 分开；两者都属于 Review 区。"
+      headerActions={(
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/profile"
+            className="min-h-11 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            回到会话回顾
           </Link>
-          <Link href="/" className="text-gray-600 hover:text-gray-800 text-sm">
-            ← 返回
+          <Link
+            href="/"
+            className="min-h-11 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            去 Chat
           </Link>
         </div>
-      </nav>
-
-      <div className="max-w-lg mx-auto px-4 py-6">
+      )}
+    >
+      <div className="mx-auto max-w-lg">
         <h1 className="text-xl font-bold text-gray-900 mb-4">复习</h1>
 
         {items.length === 0 && !loading ? (
@@ -174,6 +183,6 @@ export default function ReviewPage() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }
