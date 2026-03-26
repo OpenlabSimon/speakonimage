@@ -155,8 +155,11 @@ Interpretation notes:
 - `allOrdered` means `activityEndSentMs` never beat `lastAudioChunkSentMs`
 - `allAligned` currently means the delta is within `1ms`, which avoids false alarms
   from `Date.now()` millisecond granularity
-- if a round reports `connect_failed_before_start`, treat it as a connection-establishment
-  issue, not an audio-end ordering bug
+- `connect_failed_before_start` means Live setup did not finish before the recording round
+- `microphone_not_ready_after_start` means Live setup did finish, but microphone capture
+  never became ready after clicking start
+- `audio_callback_not_started` means microphone setup began, but browser audio callbacks
+  never started flowing
 
 ## Health endpoint
 

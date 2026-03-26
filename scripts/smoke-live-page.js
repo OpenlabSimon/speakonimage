@@ -177,24 +177,32 @@ async function main() {
   await page.waitForSelector('text=Gemini Live Beta', { timeout: 10000 });
   await page.getByRole('button', { name: '连接 Live' }).click();
   let captureStatus = 'complete';
+  let captureFailureStage = null;
+  let captureFailureMessage = null;
   const startButton = page.getByRole('button', { name: '开始这一轮' });
   const stopButton = page.getByRole('button', { name: '结束这一轮' });
 
   try {
+    captureFailureStage = 'waiting_for_start_button';
     await startButton.waitFor({ timeout: 10000 });
+    captureFailureStage = 'clicking_start_button';
     await startButton.click();
+    captureFailureStage = 'waiting_for_stop_button';
     await stopButton.waitFor({ timeout: 10000 });
     const speechPlayback = maybePlayRealMicPrompt();
     await page.waitForTimeout(RECORDING_WAIT_MS);
+    captureFailureStage = 'playing_real_mic_prompt';
     await speechPlayback;
 
     const stopEnabled = await stopButton.isEnabled();
     console.log(`stop_enabled=${stopEnabled}`);
     if (stopEnabled) {
+      captureFailureStage = 'clicking_stop_button';
       await stopButton.click();
     }
 
     try {
+      captureFailureStage = 'waiting_for_terminal_event';
       await page.waitForFunction(() => {
         const preNodes = Array.from(document.querySelectorAll('pre'));
         for (const pre of preNodes) {
@@ -210,17 +218,23 @@ async function main() {
         }
         return false;
       }, { timeout: 25000 });
-    } catch {
+    } catch (error) {
       captureStatus = 'timeout_waiting_for_terminal_event';
+      captureFailureMessage = error instanceof Error ? error.message : String(error);
     }
-  } catch {
-    captureStatus = 'connect_failed_before_start';
+  } catch (error) {
+    captureFailureMessage = error instanceof Error ? error.message : String(error);
     await page.waitForTimeout(1500);
   }
 
   const diagnostics = await readDiagnosticsFromPage(page).catch(() => null);
+  if (captureStatus === 'complete' && captureFailureMessage) {
+    captureStatus = classifyCaptureFailure(captureFailureStage, diagnostics);
+  }
   const summary = summarizeDiagnostics(diagnostics);
   summary.captureStatus = captureStatus;
+  summary.captureFailureStage = captureFailureStage;
+  summary.captureFailureMessage = captureFailureMessage;
   const bodyText = await page.locator('body').innerText();
 
   if (OUTPUT_PATH && diagnostics) {
@@ -290,6 +304,40 @@ function summarizeDiagnostics(diagnostics) {
       ? diagnostics.timeline.map((entry) => entry.name)
       : [],
   };
+}
+
+function classifyCaptureFailure(stage, diagnostics) {
+  const timelineNames = Array.isArray(diagnostics?.timeline)
+    ? diagnostics.timeline.map((entry) => entry?.name)
+    : [];
+  const hasSetupComplete = timelineNames.includes('setup_complete');
+  const hasMicrophoneReady = timelineNames.includes('microphone_ready');
+  const hasRecordingStarted = timelineNames.includes('recording_started');
+  const hasFirstAudioCallback = timelineNames.includes('first_audio_callback');
+
+  switch (stage) {
+    case 'waiting_for_start_button':
+      return hasSetupComplete ? 'start_button_not_ready' : 'connect_failed_before_start';
+    case 'clicking_start_button':
+      return hasSetupComplete ? 'start_button_click_failed' : 'connect_failed_before_start';
+    case 'waiting_for_stop_button':
+      if (hasSetupComplete && !hasMicrophoneReady) {
+        return 'microphone_not_ready_after_start';
+      }
+      if (hasMicrophoneReady && !hasRecordingStarted) {
+        return 'recording_not_started_after_microphone_ready';
+      }
+      if (hasRecordingStarted && !hasFirstAudioCallback) {
+        return 'audio_callback_not_started';
+      }
+      return hasSetupComplete ? 'recording_not_started_after_click' : 'connect_failed_before_start';
+    case 'playing_real_mic_prompt':
+      return 'prompt_playback_failed';
+    case 'clicking_stop_button':
+      return 'stop_button_click_failed';
+    default:
+      return hasSetupComplete ? 'recording_not_started_after_click' : 'connect_failed_before_start';
+  }
 }
 
 function tryParseJson(text) {

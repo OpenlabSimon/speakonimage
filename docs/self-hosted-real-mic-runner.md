@@ -217,11 +217,27 @@ Check:
 - the runner is not executing inside a restricted sandbox
 - the workflow is running on the intended self-hosted macOS machine
 
-### `connect_failed_before_start`
+### Pre-Recording Failures
 
-This is a connection-establishment failure before the recording round begins.
+The smoke harness now distinguishes several failures that used to be collapsed into
+one status.
 
-Treat it as a Live connection issue, not an audio-end ordering regression.
+`connect_failed_before_start`
+
+- Live setup did not finish before the recording round
+
+`microphone_not_ready_after_start`
+
+- Live setup finished, but browser microphone capture never became ready after
+  clicking start
+
+`audio_callback_not_started`
+
+- microphone setup began, but browser audio callbacks never started
+
+`prompt_playback_failed`
+
+- the macOS `say` prompt failed during the real-mic stimulus phase
 
 Check:
 
@@ -237,7 +253,7 @@ If the logs show all of these:
 
 but the round still ends with:
 
-- `captureStatus = connect_failed_before_start`
+- `captureStatus = microphone_not_ready_after_start`
 - `audioProcessCallbacks = 0`
 - no `microphone_ready` event
 

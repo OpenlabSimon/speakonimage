@@ -39,7 +39,7 @@ Most useful runs:
 - `23589627994`
   service-runner verification that reached `GET /api/live/health?probe=1 200` and
   `POST /api/live/token 200`, but still failed with
-  `captureStatus = connect_failed_before_start`
+  a pre-recording browser capture failure after Live setup
 - `23589819471`
   foreground-runner verification that completed with `success`
 

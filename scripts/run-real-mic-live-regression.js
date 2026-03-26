@@ -173,7 +173,8 @@ async function runSmokeRound({ baseUrl, diagnosticsPath, logPath, roundId }) {
 function buildRoundReport(roundId, diagnostics, roundResult, diagnosticsPath, logPath) {
   const lastAudioChunkSentMs = diagnostics?.timings?.lastAudioChunkSentMs ?? null;
   const activityEndSentMs = diagnostics?.timings?.activityEndSentMs ?? null;
-  const captureStatus = extractCaptureStatus(roundResult.stdout)
+  const summary = extractSummary(roundResult.stdout);
+  const captureStatus = summary?.captureStatus
     || (roundResult.timedOut ? 'timed_out' : null);
 
   return {
@@ -182,6 +183,8 @@ function buildRoundReport(roundId, diagnostics, roundResult, diagnosticsPath, lo
     logPath,
     sessionId: diagnostics?.sessionId || null,
     captureStatus,
+    captureFailureStage: summary?.captureFailureStage ?? null,
+    captureFailureMessage: summary?.captureFailureMessage ?? null,
     fallbackActive: diagnostics?.fallbackActive ?? false,
     currentState: diagnostics?.currentState ?? null,
     lastAudioChunkSentMs,
@@ -199,9 +202,17 @@ function buildRoundReport(roundId, diagnostics, roundResult, diagnosticsPath, lo
   };
 }
 
-function extractCaptureStatus(stdout) {
-  const match = stdout.match(/"captureStatus"\s*:\s*"([^"]+)"/);
-  return match ? match[1] : null;
+function extractSummary(stdout) {
+  const match = stdout.match(/=== summary ===\n([\s\S]*?)\n=== diagnostics ===/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 function evaluateStrictFailures(report) {
@@ -222,6 +233,9 @@ function evaluateStrictFailures(report) {
   for (const round of report.rounds) {
     if (round.captureStatus !== 'complete') {
       failures.push(`${round.roundId}: captureStatus=${round.captureStatus}`);
+      if (round.captureFailureStage) {
+        failures.push(`${round.roundId}: captureFailureStage=${round.captureFailureStage}`);
+      }
     }
     if (round.fallbackActive) {
       failures.push(`${round.roundId}: fallbackActive=true`);
