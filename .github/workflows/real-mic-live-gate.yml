@@ -67,10 +67,10 @@ jobs:
           NEXT_PUBLIC_ENABLE_GEMINI_LIVE: true
           AUTH_TRUST_HOST: true
           GEMINI_OFFICIAL_API_KEY: ${{ secrets.GEMINI_OFFICIAL_API_KEY }}
-          GEMINI_LIVE_PROXY_URL: "${{ secrets.GEMINI_LIVE_PROXY_URL || vars.GEMINI_LIVE_PROXY_URL || '' }}"
           GEMINI_LIVE_MODEL: gemini-2.5-flash-native-audio-preview-12-2025
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |
+          GEMINI_LIVE_PROXY_URL="${GEMINI_LIVE_PROXY_URL:-${{ secrets.GEMINI_LIVE_PROXY_URL || vars.GEMINI_LIVE_PROXY_URL || '' }}}" \
           RUNS='${{ github.event.inputs.runs || '3' }}' \
           RECORDING_WAIT_MS='${{ github.event.inputs.recording_wait_ms || '8000' }}' \
           npm run smoke:live:real:strict
