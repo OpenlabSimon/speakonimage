@@ -83,6 +83,8 @@ interface LiveDiagnosticSnapshot {
     firstServerPacketMs?: number;
     audioCaptureReadyMs?: number;
     firstAudioChunkSentMs?: number;
+    lastAudioChunkSentMs?: number;
+    activityEndSentMs?: number;
     firstInputTranscriptMs?: number;
     firstOutputTranscriptMs?: number;
     firstModelTextMs?: number;
@@ -336,6 +338,12 @@ function applyTiming(snapshot: LiveDiagnosticSnapshot, name: LocalDiagnosticEven
       break;
     case 'first_audio_chunk_sent':
       snapshot.timings.firstAudioChunkSentMs = offsetMs;
+      break;
+    case 'last_audio_chunk_sent':
+      snapshot.timings.lastAudioChunkSentMs = offsetMs;
+      break;
+    case 'activity_end_sent':
+      snapshot.timings.activityEndSentMs = offsetMs;
       break;
     case 'first_input_transcript':
       snapshot.timings.firstInputTranscriptMs = offsetMs;

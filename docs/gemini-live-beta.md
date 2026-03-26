@@ -46,6 +46,14 @@ When the flag is on, the voice tab shows:
 - `开始实时语音`
 - standard fallback voice submission below it
 
+### Local auth secret behavior
+
+Local development now falls back to a fixed non-production auth secret when neither
+`AUTH_SECRET` nor `NEXTAUTH_SECRET` is set.
+
+This keeps `/api/auth/session` from returning noisy `500` errors during local Gemini
+Live diagnostics. Production still requires an explicit secret.
+
 ## Expected flow
 
 1. Frontend calls `POST /api/live/token`
@@ -88,6 +96,66 @@ If it fails, capture:
 - close code
 - raw message
 - timeout / auth / websocket error
+
+## Real microphone regression
+
+To run the headed Chrome real-microphone regression locally:
+
+```bash
+cd /Users/huiliu/Projects/speakonimage
+RUNS=3 npm run smoke:live:real
+```
+
+For a release-gate version that exits non-zero on failure:
+
+```bash
+cd /Users/huiliu/Projects/speakonimage
+RUNS=3 npm run smoke:live:real:strict
+```
+
+What this command does:
+
+- starts a local Next dev server on port `3027`
+- injects `AUTH_SECRET=local-dev-auth-secret-speakonimage` when missing
+- enables `NEXT_PUBLIC_ENABLE_GEMINI_LIVE=true`
+- opens headed Chrome with real `getUserMedia` microphone access
+- plays a short macOS `say` prompt through speakers after recording starts
+- writes per-round diagnostics and logs to `/tmp/speakonimage-real-mic-runs`
+- shuts the browser-runner and local dev server down automatically
+
+Important environment knobs:
+
+- `RUNS`
+- `RECORDING_WAIT_MS`
+- `ROUND_TIMEOUT_MS`
+- `PLAYWRIGHT_CHANNEL`
+- `OUTPUT_DIR`
+- `AUTH_SECRET`
+- `STRICT`
+
+Important output files:
+
+- `/tmp/speakonimage-real-mic-runs/report.json`
+- `/tmp/speakonimage-real-mic-runs/dev-server.log`
+- `/tmp/speakonimage-real-mic-runs/round-1.json`
+- `/tmp/speakonimage-real-mic-runs/round-1.log`
+
+Recommended pass criteria:
+
+- `completedRounds === runs`
+- every round has `captureStatus = complete`
+- every round has `fallbackActive = false`
+- every round has `trackSampleRate = 48000` on desktop Chrome real mic
+- `allOrdered = true`
+- `allAligned = true`
+
+Interpretation notes:
+
+- `allOrdered` means `activityEndSentMs` never beat `lastAudioChunkSentMs`
+- `allAligned` currently means the delta is within `1ms`, which avoids false alarms
+  from `Date.now()` millisecond granularity
+- if a round reports `connect_failed_before_start`, treat it as a connection-establishment
+  issue, not an audio-end ordering bug
 
 ## Health endpoint
 

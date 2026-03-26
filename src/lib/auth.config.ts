@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from 'next-auth';
 import Google from 'next-auth/providers/google';
+import { getAuthSecret } from './auth/secret';
 
 /**
  * Edge-compatible auth config.
@@ -10,6 +11,7 @@ import Google from 'next-auth/providers/google';
  * lives in auth.ts (Node.js runtime only).
  */
 export const authConfig: NextAuthConfig = {
+  secret: getAuthSecret(),
   providers: [
     // Only declare providers that don't need Node.js APIs at config time.
     // Google is safe — it only needs env vars, no bcrypt/prisma.

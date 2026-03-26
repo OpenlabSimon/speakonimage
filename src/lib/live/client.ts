@@ -31,7 +31,9 @@ export interface GeminiLiveDiagnosticEvent {
     | 'first_server_packet'
     | 'setup_complete'
     | 'first_audio_chunk_sent'
+    | 'last_audio_chunk_sent'
     | 'audio_stream_end'
+    | 'activity_end_sent'
     | 'first_input_transcript'
     | 'first_output_transcript'
     | 'first_model_text'
@@ -92,10 +94,12 @@ export class GeminiLiveClient {
   private voiceName = getGeminiLiveVoiceName();
   private wsUrl = '';
   private audioActivityStarted = false;
+  private sentAudioChunkCount = 0;
   private pendingOutputAudio: Array<{ bytes: Uint8Array; mimeType?: string }> = [];
   private latestInputTranscript = '';
   private latestOutputTranscript = '';
   private latestModelTexts: string[] = [];
+  private pendingRealtimeInput = Promise.resolve();
   private callbacks: GeminiLiveClientOptions;
 
   constructor(options: GeminiLiveClientOptions = {}) {
@@ -111,6 +115,7 @@ export class GeminiLiveClient {
     this.firstModelTextReceived = false;
     this.firstOutputAudioReceived = false;
     this.audioActivityStarted = false;
+    this.sentAudioChunkCount = 0;
     this.pendingOutputAudio = [];
     this.resetTurnBuffers();
     console.info('[GeminiLive] connect:start');
@@ -233,59 +238,68 @@ export class GeminiLiveClient {
   }
 
   async sendAudioChunk(blob: Blob) {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      throw new Error('Gemini Live socket is not connected');
-    }
+    return this.enqueueRealtimeInput(async (socket) => {
+      if (!this.audioActivityStarted) {
+        this.pendingOutputAudio = [];
+        socket.send(JSON.stringify({
+          realtimeInput: {
+            activityStart: {},
+          },
+        }));
+        this.audioActivityStarted = true;
+        console.info('[GeminiLive] audio:activity_start');
+      }
 
-    if (!this.audioActivityStarted) {
-      this.pendingOutputAudio = [];
-      this.socket.send(JSON.stringify({
+      console.info('[GeminiLive] audio:chunk', { size: blob.size, type: blob.type });
+      const data = await blobToBase64(blob);
+      socket.send(JSON.stringify({
         realtimeInput: {
-          activityStart: {},
+          audio: {
+            mimeType: blob.type || 'audio/webm',
+            data,
+          },
         },
       }));
-      this.audioActivityStarted = true;
-      console.info('[GeminiLive] audio:activity_start');
-    }
 
-    console.info('[GeminiLive] audio:chunk', { size: blob.size, type: blob.type });
-    const data = await blobToBase64(blob);
-    this.socket.send(JSON.stringify({
-      realtimeInput: {
-        audio: {
+      if (!this.firstAudioChunkSent) {
+        this.firstAudioChunkSent = true;
+        this.emitDiagnostic('first_audio_chunk_sent', {
+          size: blob.size,
           mimeType: blob.type || 'audio/webm',
-          data,
-        },
-      },
-    }));
+        });
+      }
 
-    if (!this.firstAudioChunkSent) {
-      this.firstAudioChunkSent = true;
-      this.emitDiagnostic('first_audio_chunk_sent', {
-        size: blob.size,
-        mimeType: blob.type || 'audio/webm',
-      });
-    }
+      this.sentAudioChunkCount += 1;
+    });
   }
 
   finishAudioStream() {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    console.info('[GeminiLive] audio:stream_end');
-    this.emitDiagnostic('audio_stream_end', {
-      usedActivityMarkers: this.audioActivityStarted,
-    });
-    this.updateState('responding');
-    this.socket.send(JSON.stringify({
-      realtimeInput: {
-        ...(this.audioActivityStarted
-          ? { activityEnd: {} }
-          : { audioStreamEnd: true }),
-      },
-    }));
-    this.audioActivityStarted = false;
+    return this.enqueueRealtimeInput((socket) => {
+      console.info('[GeminiLive] audio:stream_end');
+      this.emitDiagnostic('audio_stream_end', {
+        usedActivityMarkers: this.audioActivityStarted,
+      });
+      this.updateState('responding');
+      const usedActivityMarkers = this.audioActivityStarted;
+      if (usedActivityMarkers && this.sentAudioChunkCount > 0) {
+        this.emitDiagnostic('last_audio_chunk_sent', {
+          chunkCount: this.sentAudioChunkCount,
+        });
+      }
+      socket.send(JSON.stringify({
+        realtimeInput: {
+          ...(usedActivityMarkers
+            ? { activityEnd: {} }
+            : { audioStreamEnd: true }),
+        },
+      }));
+      if (usedActivityMarkers) {
+        this.emitDiagnostic('activity_end_sent', {
+          chunkCount: this.sentAudioChunkCount,
+        });
+      }
+      this.audioActivityStarted = false;
+    }, { ignoreDisconnected: true });
   }
 
   close() {
@@ -469,6 +483,28 @@ export class GeminiLiveClient {
     this.latestInputTranscript = '';
     this.latestOutputTranscript = '';
     this.latestModelTexts = [];
+  }
+
+  private enqueueRealtimeInput(
+    task: (socket: WebSocket) => Promise<void> | void,
+    options?: { ignoreDisconnected?: boolean }
+  ) {
+    const job = this.pendingRealtimeInput
+      .catch(() => undefined)
+      .then(async () => {
+        const socket = this.socket;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          if (options?.ignoreDisconnected) {
+            return;
+          }
+          throw new Error('Gemini Live socket is not connected');
+        }
+
+        await task(socket);
+      });
+
+    this.pendingRealtimeInput = job;
+    return job;
   }
 
   private fail(code: GeminiLiveErrorCode, message: string, context?: GeminiLiveErrorContext) {

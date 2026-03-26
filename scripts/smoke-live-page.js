@@ -2,17 +2,34 @@
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('node:fs');
+const os = require('node:os');
+const { spawn } = require('node:child_process');
 const { chromium } = require('playwright');
 
 const BASE_URL = process.env.BASE_URL || 'https://www.dopling.ai';
 const INVITE_COOKIE = process.env.INVITE_COOKIE || 'friend-1-8e6b0ba5f241a2a0';
 const OUTPUT_PATH = process.env.OUTPUT_PATH || '';
+const USE_REAL_MIC = /^(1|true|yes)$/i.test(process.env.USE_REAL_MIC || '');
+const HEADLESS = /^(1|true|yes)$/i.test(process.env.HEADLESS || '') ? true : !USE_REAL_MIC;
+const PLAYWRIGHT_CHANNEL = process.env.PLAYWRIGHT_CHANNEL || (USE_REAL_MIC ? 'chrome' : '');
+const RECORDING_WAIT_MS = Number(process.env.RECORDING_WAIT_MS || (USE_REAL_MIC ? 7000 : 3500));
+const REAL_MIC_TTS_TEXT = process.env.REAL_MIC_TTS_TEXT
+  || 'Hello, I am testing the real microphone path for Gemini Live. I am building a speaking app for English learners.';
+const REAL_MIC_TTS_VOICE = process.env.REAL_MIC_TTS_VOICE || 'Samantha';
+const REAL_MIC_TTS_RATE = Number(process.env.REAL_MIC_TTS_RATE || 175);
+const REAL_MIC_TTS_DELAY_MS = Number(process.env.REAL_MIC_TTS_DELAY_MS || 1500);
 const host = new URL(BASE_URL).hostname;
 const cookieDomain = host.endsWith('dopling.ai') ? '.dopling.ai' : host;
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    ...(PLAYWRIGHT_CHANNEL ? { channel: PLAYWRIGHT_CHANNEL } : {}),
+  });
   const context = await browser.newContext();
+  if (USE_REAL_MIC) {
+    await context.grantPermissions(['microphone'], { origin: new URL(BASE_URL).origin });
+  }
 
   await context.addCookies([
     {
@@ -52,89 +69,91 @@ async function main() {
     });
   });
 
-  await page.addInitScript(() => {
-    class FakeGainNode {
-      gain = { value: 1 };
-      connect() {}
-      disconnect() {}
-    }
+  await page.addInitScript(({ useRealMic }) => {
+    if (!useRealMic) {
+      class FakeGainNode {
+        gain = { value: 1 };
+        connect() {}
+        disconnect() {}
+      }
 
-    class FakeScriptProcessorNode {
-      onaudioprocess = null;
-      connect() {}
-      disconnect() {}
-    }
+      class FakeScriptProcessorNode {
+        onaudioprocess = null;
+        connect() {}
+        disconnect() {}
+      }
 
-    class FakeMediaStreamSource {
-      connect(processor) {
-        let tick = 0;
-        this.intervalId = setInterval(() => {
-          tick += 1;
-          const chunk = new Float32Array(1024);
-          for (let index = 0; index < chunk.length; index += 1) {
-            chunk[index] = Math.sin((index + tick * 32) / 18) * 0.18;
-          }
+      class FakeMediaStreamSource {
+        connect(processor) {
+          let tick = 0;
+          this.intervalId = setInterval(() => {
+            tick += 1;
+            const chunk = new Float32Array(1024);
+            for (let index = 0; index < chunk.length; index += 1) {
+              chunk[index] = Math.sin((index + tick * 32) / 18) * 0.18;
+            }
 
-          processor.onaudioprocess?.({
-            inputBuffer: {
-              getChannelData: () => chunk,
-            },
-          });
+            processor.onaudioprocess?.({
+              inputBuffer: {
+                getChannelData: () => chunk,
+              },
+            });
 
-          if (tick >= 12) {
+            if (tick >= 12) {
+              clearInterval(this.intervalId);
+            }
+          }, 140);
+        }
+        disconnect() {
+          if (this.intervalId) {
             clearInterval(this.intervalId);
           }
-        }, 140);
-      }
-      disconnect() {
-        if (this.intervalId) {
-          clearInterval(this.intervalId);
         }
       }
+
+      class FakeAudioContext {
+        constructor() {
+          this.sampleRate = 16000;
+          this.destination = {};
+        }
+
+        async resume() {}
+        async close() {}
+        createMediaStreamSource() {
+          return new FakeMediaStreamSource();
+        }
+        createScriptProcessor() {
+          return new FakeScriptProcessorNode();
+        }
+        createGain() {
+          return new FakeGainNode();
+        }
+      }
+
+      Object.defineProperty(window, 'AudioContext', {
+        configurable: true,
+        writable: true,
+        value: FakeAudioContext,
+      });
+
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: async () => ({
+            getTracks: () => [{ stop() {} }],
+            getAudioTracks: () => [{
+              getSettings: () => ({
+                sampleRate: 16000,
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              }),
+            }],
+          }),
+        },
+      });
     }
-
-    class FakeAudioContext {
-      constructor() {
-        this.sampleRate = 16000;
-        this.destination = {};
-      }
-
-      async resume() {}
-      async close() {}
-      createMediaStreamSource() {
-        return new FakeMediaStreamSource();
-      }
-      createScriptProcessor() {
-        return new FakeScriptProcessorNode();
-      }
-      createGain() {
-        return new FakeGainNode();
-      }
-    }
-
-    Object.defineProperty(window, 'AudioContext', {
-      configurable: true,
-      writable: true,
-      value: FakeAudioContext,
-    });
-
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: {
-        getUserMedia: async () => ({
-          getTracks: () => [{ stop() {} }],
-          getAudioTracks: () => [{
-            getSettings: () => ({
-              sampleRate: 16000,
-              channelCount: 1,
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            }),
-          }],
-        }),
-      },
-    });
 
     window.localStorage.setItem(
       'currentTopic',
@@ -150,9 +169,9 @@ async function main() {
         },
       })
     );
-  });
+  }, { useRealMic: USE_REAL_MIC });
 
-  await page.goto(`${BASE_URL}/topic/practice`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE_URL}/topic/practice?view=classic`, { waitUntil: 'networkidle' });
   await page.waitForSelector('text=实时口语教练 Beta', { timeout: 20000 });
   await page.getByRole('button', { name: '实时口语教练 Beta' }).click();
   await page.waitForSelector('text=Gemini Live Beta', { timeout: 10000 });
@@ -165,7 +184,9 @@ async function main() {
     await startButton.waitFor({ timeout: 10000 });
     await startButton.click();
     await stopButton.waitFor({ timeout: 10000 });
-    await page.waitForTimeout(3500);
+    const speechPlayback = maybePlayRealMicPrompt();
+    await page.waitForTimeout(RECORDING_WAIT_MS);
+    await speechPlayback;
 
     const stopEnabled = await stopButton.isEnabled();
     console.log(`stop_enabled=${stopEnabled}`);
@@ -282,6 +303,44 @@ function tryParseJson(text) {
 function truncateFrame(payload) {
   const text = typeof payload === 'string' ? payload : String(payload);
   return text.length > 400 ? `${text.slice(0, 400)}...` : text;
+}
+
+function maybePlayRealMicPrompt() {
+  if (!USE_REAL_MIC || !REAL_MIC_TTS_TEXT.trim()) {
+    return Promise.resolve();
+  }
+
+  if (os.platform() !== 'darwin') {
+    console.warn('Skipping real-mic TTS prompt because macOS `say` is unavailable.');
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const command = spawn(
+      'sh',
+      [
+        '-lc',
+        `sleep ${Math.max(0, REAL_MIC_TTS_DELAY_MS) / 1000}; say -v ${shellEscape(REAL_MIC_TTS_VOICE)} -r ${Number.isFinite(REAL_MIC_TTS_RATE) ? REAL_MIC_TTS_RATE : 175} ${shellEscape(REAL_MIC_TTS_TEXT)}`,
+      ],
+      {
+        stdio: 'ignore',
+      }
+    );
+
+    command.on('error', reject);
+    command.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`say exited with code ${code}`));
+    });
+  });
+}
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 main().catch((error) => {

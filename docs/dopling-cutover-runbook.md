@@ -119,6 +119,30 @@ Suggested URLs:
 - `/topic/practice`
 - `/profile`
 
+### 7.5 Run the desktop Chrome real-mic gate locally
+
+Before production cutover, run the local real-microphone Gemini Live gate:
+
+```bash
+cd /Users/huiliu/Projects/speakonimage
+RUNS=3 npm run smoke:live:real:strict
+```
+
+Treat this as a release blocker if any of the following fail:
+
+- the command exits non-zero
+- `completedRounds !== runs`
+- any round reports `captureStatus != complete`
+- any round reports `fallbackActive = true`
+- any round reports `trackSampleRate != 48000`
+- `allOrdered != true`
+- `allAligned != true`
+
+Reference:
+
+- [`gemini-live-beta.md`](/Users/huiliu/Projects/speakonimage/docs/gemini-live-beta.md)
+- [`/tmp/speakonimage-real-mic-runs/report.json`](/tmp/speakonimage-real-mic-runs/report.json)
+
 ### 8. Confirm rollback readiness
 
 Before domain cutover, verify:

@@ -11,7 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "smoke:live:page": "node scripts/smoke-live-page.js",
+    "smoke:live:real": "node scripts/run-real-mic-live-regression.js",
+    "smoke:live:real:strict": "STRICT=1 node scripts/run-real-mic-live-regression.js",
+    "pr:label:real-mic-gate": "sh scripts/real-mic-gate-label.sh add",
+    "pr:unlabel:real-mic-gate": "sh scripts/real-mic-gate-label.sh remove"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

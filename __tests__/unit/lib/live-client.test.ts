@@ -25,6 +25,17 @@ class FakeWebSocket {
   }
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe('GeminiLiveClient', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
@@ -206,7 +217,10 @@ describe('GeminiLiveClient', () => {
       }),
     }));
 
-    const client = new GeminiLiveClient();
+    const diagnosticEvents: string[] = [];
+    const client = new GeminiLiveClient({
+      onDiagnosticEvent: (event) => diagnosticEvents.push(event.name),
+    });
     const connectPromise = client.connect();
     await new Promise((resolve) => setTimeout(resolve, 0));
     const socket = FakeWebSocket.instances[0];
@@ -215,11 +229,81 @@ describe('GeminiLiveClient', () => {
     await connectPromise;
 
     await client.sendAudioChunk(new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/pcm;rate=16000' }));
-    client.finishAudioStream();
+    await client.finishAudioStream();
 
     expect(socket.sent[1]).toContain('"activityStart"');
     expect(socket.sent[2]).toContain('"audio"');
     expect(socket.sent[3]).toContain('"activityEnd"');
+    expect(diagnosticEvents).toEqual(expect.arrayContaining([
+      'first_audio_chunk_sent',
+      'last_audio_chunk_sent',
+      'activity_end_sent',
+    ]));
+    expect(diagnosticEvents.indexOf('last_audio_chunk_sent')).toBeLessThan(
+      diagnosticEvents.indexOf('activity_end_sent')
+    );
+  });
+
+  it('serializes audio sends before ending the stream', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({
+        success: true,
+        data: {
+          provider: 'gemini-live',
+          tokenName: 'auth_tokens/test-token',
+          model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+          wsUrl: 'wss://example.test/live',
+        },
+      }),
+      json: async () => ({
+        success: true,
+        data: {
+          provider: 'gemini-live',
+          tokenName: 'auth_tokens/test-token',
+          model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+          wsUrl: 'wss://example.test/live',
+        },
+      }),
+    }));
+
+    const firstChunk = createDeferred<ArrayBuffer>();
+    const secondChunk = createDeferred<ArrayBuffer>();
+    const firstBlob = new Blob([], { type: 'audio/pcm;rate=16000' });
+    const secondBlob = new Blob([], { type: 'audio/pcm;rate=16000' });
+
+    Object.defineProperty(firstBlob, 'arrayBuffer', {
+      value: vi.fn(() => firstChunk.promise),
+    });
+    Object.defineProperty(secondBlob, 'arrayBuffer', {
+      value: vi.fn(() => secondChunk.promise),
+    });
+
+    const client = new GeminiLiveClient();
+    const connectPromise = client.connect();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const socket = FakeWebSocket.instances[0];
+    socket.onopen?.();
+    socket.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) });
+    await connectPromise;
+
+    const sendFirst = client.sendAudioChunk(firstBlob);
+    const sendSecond = client.sendAudioChunk(secondBlob);
+    const finishStream = client.finishAudioStream();
+
+    secondChunk.resolve(new Uint8Array([4, 5, 6]).buffer);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(socket.sent).toHaveLength(2);
+    expect(socket.sent[1]).toContain('"activityStart"');
+
+    firstChunk.resolve(new Uint8Array([1, 2, 3]).buffer);
+    await Promise.all([sendFirst, sendSecond, finishStream]);
+
+    expect(socket.sent[2]).toContain('"audio"');
+    expect(socket.sent[2]).toContain('"AQID"');
+    expect(socket.sent[3]).toContain('"audio"');
+    expect(socket.sent[3]).toContain('"BAUG"');
+    expect(socket.sent[4]).toContain('"activityEnd"');
   });
 
   it('returns to connected state after turnComplete', async () => {
@@ -257,7 +341,7 @@ describe('GeminiLiveClient', () => {
     await connectPromise;
 
     await client.sendAudioChunk(new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/pcm;rate=16000' }));
-    client.finishAudioStream();
+    await client.finishAudioStream();
     socket.onmessage?.({
       data: JSON.stringify({
         serverContent: {

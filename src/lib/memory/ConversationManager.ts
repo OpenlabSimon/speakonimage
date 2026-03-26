@@ -359,11 +359,6 @@ export async function endSession(
     },
   });
 
-  const refreshed = await getSession(sessionId);
-  if (refreshed) {
-    return refreshed;
-  }
-
   return toChatSession(updated);
 }
 

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ReviewPreference, TeacherSelection } from './types';
+import { getAuthSecret } from '@/lib/auth/secret';
 
 interface ReviewAudioTokenPayload {
   teacher: TeacherSelection;
@@ -12,12 +13,7 @@ interface ReviewAudioTokenPayload {
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 function getSigningSecret(): string | null {
-  return (
-    process.env.REVIEW_AUDIO_SIGNING_SECRET ||
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    null
-  );
+  return process.env.REVIEW_AUDIO_SIGNING_SECRET || getAuthSecret() || null;
 }
 
 function toBase64Url(input: string): string {
