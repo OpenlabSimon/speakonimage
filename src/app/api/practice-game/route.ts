@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GeminiProvider } from '@/lib/llm';
+import { resolveBackgroundLLMModel } from '@/lib/llm/model-selection';
 import { isValidCharacterId } from '@/lib/characters';
+import { normalizeOpenAICompatibleBaseUrl, readCleanEnvValue } from '@/lib/env-utils';
 import {
   PracticeGameSchema,
   buildPracticeGameSystemPrompt,
@@ -12,7 +14,6 @@ interface PracticeGameRequest {
   topicType: string;
   chinesePrompt: string;
   userResponse: string;
-  overallScore: number;
   evaluation: Record<string, unknown>;
   cefrLevel: string;
 }
@@ -20,7 +21,7 @@ interface PracticeGameRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: PracticeGameRequest = await request.json();
-    const { characterId, topicType, chinesePrompt, userResponse, overallScore, evaluation, cefrLevel } = body;
+    const { characterId, topicType, chinesePrompt, userResponse, evaluation, cefrLevel } = body;
 
     // Validate required fields
     if (!characterId || !isValidCharacterId(characterId)) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!topicType || !chinesePrompt || !userResponse || overallScore === undefined || !evaluation || !cefrLevel) {
+    if (!topicType || !chinesePrompt || !userResponse || !evaluation || !cefrLevel) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use higher temperature and longer timeout for HTML game generation
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiKey = readCleanEnvValue('GEMINI_API_KEY');
     if (!geminiKey) {
       return NextResponse.json(
         { success: false, error: 'LLM provider not configured' },
@@ -48,8 +49,8 @@ export async function POST(request: NextRequest) {
 
     const llm = new GeminiProvider({
       apiKey: geminiKey,
-      baseUrl: process.env.GEMINI_BASE_URL || 'https://hiapi.online/v1',
-      model: process.env.GEMINI_MODEL || 'gemini-3-pro-preview',
+      baseUrl: normalizeOpenAICompatibleBaseUrl(process.env.GEMINI_BASE_URL),
+      model: resolveBackgroundLLMModel(),
       temperature: 0.9,
       maxRetries: 1,
       timeoutMs: 60000,
@@ -59,7 +60,6 @@ export async function POST(request: NextRequest) {
     const userPrompt = buildPracticeGameUserPrompt({
       chinesePrompt,
       userResponse,
-      overallScore,
       cefrLevel,
       topicType,
       evaluation,

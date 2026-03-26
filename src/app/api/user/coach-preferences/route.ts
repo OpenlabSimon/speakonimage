@@ -16,7 +16,10 @@ const CoachPreferencesSchema = z.object({
   voiceId: z
     .string()
     .trim()
-    .regex(/^[A-Za-z0-9]{20}$/, 'voiceId must be a 20-character alphanumeric ElevenLabs voice ID')
+    .regex(
+      /(^[a-z]{2,3}-[A-Z]{2,}-[A-Za-z0-9]+Neural$)|(^[A-Za-z0-9]{20}$)/,
+      'voiceId must be a valid Azure voice name or legacy 20-character voice ID'
+    )
     .or(z.literal(''))
     .optional(),
 });

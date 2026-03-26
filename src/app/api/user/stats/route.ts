@@ -31,7 +31,7 @@ export async function GET() {
       // Total submissions
       prisma.submission.count({ where: { accountId: userId } }),
 
-      // Recent submissions with scores (last 10)
+      // Recent submissions (last 10)
       prisma.submission.findMany({
         where: { accountId: userId },
         orderBy: { createdAt: 'desc' },
@@ -69,14 +69,6 @@ export async function GET() {
       }),
     ]);
 
-    // Calculate average score from recent submissions
-    const scores = recentSubmissions
-      .map(s => (s.difficultyAssessment as { overallScore?: number } | null)?.overallScore)
-      .filter((s): s is number => typeof s === 'number');
-    const averageScore = scores.length > 0
-      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-      : null;
-
     // Count by topic type
     const translationCount = recentSubmissions.filter(s => s.topic.type === 'translation').length;
     const expressionCount = recentSubmissions.filter(s => s.topic.type === 'expression').length;
@@ -88,8 +80,6 @@ export async function GET() {
     return NextResponse.json<ApiResponse<{
       totalTopics: number;
       totalSubmissions: number;
-      averageScore: number | null;
-      recentScores: number[];
       topGrammarErrors: { pattern: string; count: number }[];
       practiceBreakdown: {
         translation: number;
@@ -104,8 +94,6 @@ export async function GET() {
       data: {
         totalTopics,
         totalSubmissions,
-        averageScore,
-        recentScores: scores,
         topGrammarErrors: grammarErrorStats.map(e => ({
           pattern: e.errorPattern,
           count: e._count.errorPattern,

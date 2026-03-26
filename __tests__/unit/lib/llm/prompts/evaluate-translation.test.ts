@@ -45,12 +45,35 @@ describe('TranslationEvaluationSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an invalid CEFR estimate', () => {
-    const result = TranslationEvaluationSchema.safeParse({
+  it('accepts level-only output and derives score', () => {
+    const result = TranslationEvaluationSchema.parse({
+      ...fixture,
+      semanticAccuracy: {
+        conveyedPoints: fixture.semanticAccuracy.conveyedPoints,
+        missedPoints: fixture.semanticAccuracy.missedPoints,
+        comment: fixture.semanticAccuracy.comment,
+        level: 'strong',
+      },
+    });
+
+    expect(result.semanticAccuracy.level).toBe('strong');
+    expect(result.semanticAccuracy.score).toBe(84);
+  });
+
+  it('normalizes a noisy CEFR estimate', () => {
+    const result = TranslationEvaluationSchema.parse({
+      ...fixture,
+      overallCefrEstimate: ' upper intermediate ',
+    });
+    expect(result.overallCefrEstimate).toBe('B2');
+  });
+
+  it('falls back to B1 for an invalid CEFR estimate', () => {
+    const result = TranslationEvaluationSchema.parse({
       ...fixture,
       overallCefrEstimate: 'D1',
     });
-    expect(result.success).toBe(false);
+    expect(result.overallCefrEstimate).toBe('B1');
   });
 
   it('rejects data with wrong type literal', () => {
@@ -183,13 +206,19 @@ describe('buildTranslationEvaluationPrompt', () => {
   });
 
   it('includes history attempts when provided', () => {
-    const history = [{ text: 'first try', score: 50 }];
+    const history = [
+      { text: 'first try', score: 50 },
+      { text: 'second try with more details', score: 68 },
+    ];
     const prompt = buildTranslationEvaluationPrompt(
       chinesePrompt, keyPoints, userResponse, suggestedVocab, history,
     );
-    expect(prompt).toContain('first try');
-    expect(prompt).toContain('50');
-    expect(prompt).toContain('历史尝试');
+    expect(prompt).toContain('历史摘要');
+    expect(prompt).toContain('count=2');
+    expect(prompt).toContain('second try with more details');
+    expect(prompt).not.toContain('尝试 1');
+    expect(prompt).not.toContain('score=');
+    expect(prompt).not.toContain('得分');
   });
 
   it('omits history section when not provided', () => {
@@ -205,7 +234,7 @@ describe('buildTranslationEvaluationPrompt', () => {
       undefined, 'Beginner learner, weak on tenses',
     );
     expect(prompt).toContain('Beginner learner, weak on tenses');
-    expect(prompt).toContain('学生背景');
+    expect(prompt).toContain('画像参考');
   });
 
   it('mentions voice-specific label when inputMethod is voice', () => {
@@ -214,5 +243,14 @@ describe('buildTranslationEvaluationPrompt', () => {
       undefined, undefined, 'voice',
     );
     expect(prompt).toContain('语音转写');
+  });
+
+  it('asks for level instead of score', () => {
+    const prompt = buildTranslationEvaluationPrompt(
+      chinesePrompt, keyPoints, userResponse, suggestedVocab,
+    );
+    expect(prompt).toContain('level: 从 excellent / strong / solid / developing / limited 里选一个');
+    expect(prompt).toContain('不要返回任何数字分数');
+    expect(prompt).not.toContain('score: 0-100分');
   });
 });

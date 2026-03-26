@@ -1,6 +1,12 @@
-import { evaluateResponse, getProfileContext, persistSubmission } from '@/lib/evaluation/evaluateSubmission';
+import {
+  evaluateResponse,
+  getProfileContext,
+  getSpeakerLanguageProfile,
+  persistSubmission,
+} from '@/lib/evaluation/evaluateSubmission';
+import { compareCefrLevels, normalizeCefrLevel } from '@/lib/cefr';
 import type { EvaluationOutput } from '@/lib/evaluation/evaluators/types';
-import type { InputMethod, TopicType } from '@/types';
+import type { CEFRLevel, InputMethod, TopicType } from '@/types';
 import {
   normalizeReviewPreference,
   normalizeTeacherSelection,
@@ -12,7 +18,7 @@ import type {
   TeacherSelection,
 } from '@/domains/teachers/types';
 import { buildReviewTextOutput } from '@/domains/teachers/review-text';
-import { buildAudioReview } from '@/domains/teachers/review-audio-generator';
+import { buildAudioReview, buildPendingAudioReview } from '@/domains/teachers/review-audio-generator';
 import { buildHtmlArtifact } from '@/domains/teachers/review-html-generator';
 
 export interface RoundTopicContent {
@@ -32,6 +38,11 @@ export interface RoundTopicContent {
     pattern: string;
     example: string;
   }>;
+  difficultyMetadata?: {
+    targetCefr: string;
+    vocabComplexity?: number;
+    grammarComplexity?: number;
+  };
 }
 
 export interface AuthenticatedRoundContext {
@@ -62,6 +73,7 @@ export interface RunCoachingRoundInput {
     sessionId?: string;
     audioUrl?: string;
   };
+  deferAudioReview?: boolean;
 }
 
 export interface RunCoachingRoundResult {
@@ -75,9 +87,67 @@ export interface RunCoachingRoundResult {
   teacher: TeacherSelection;
   review: ReviewPreference;
   reviewText: string;
+  speechScript: string;
+  /** @deprecated Use speechScript instead. */
   ttsText: string;
   audioReview: AudioReview;
   htmlArtifact: HtmlArtifact;
+  sameTopicProgress?: SameTopicProgress | null;
+  difficultySignal?: DifficultySignal | null;
+}
+
+export interface SameTopicProgress {
+  attemptCount: number;
+  deltaFromLast: number;
+  isBestSoFar: boolean;
+  trend: 'up' | 'flat' | 'down';
+}
+
+export interface DifficultySignal {
+  targetCefr: CEFRLevel;
+  baselineCefr: CEFRLevel;
+  relation: 'stretch' | 'matched' | 'easier';
+}
+
+function buildSameTopicProgress(
+  historyAttempts: RunCoachingRoundInput['historyAttempts'],
+  overallScore: number
+): SameTopicProgress | null {
+  if (!historyAttempts || historyAttempts.length === 0) {
+    return null;
+  }
+
+  const previousScores = historyAttempts.map((item) => item.score);
+  const lastScore = previousScores[previousScores.length - 1] ?? overallScore;
+
+  return {
+    attemptCount: historyAttempts.length + 1,
+    deltaFromLast: overallScore - lastScore,
+    isBestSoFar: overallScore >= Math.max(...previousScores),
+    trend: overallScore > lastScore ? 'up' : overallScore < lastScore ? 'down' : 'flat',
+  };
+}
+
+function buildDifficultySignal(
+  languageProfile: Awaited<ReturnType<typeof getSpeakerLanguageProfile>>,
+  topicContent: RoundTopicContent
+): DifficultySignal | null {
+  if (!topicContent.difficultyMetadata?.targetCefr) {
+    return null;
+  }
+
+  const targetCefr = normalizeCefrLevel(topicContent.difficultyMetadata.targetCefr);
+  const baselineCefr = normalizeCefrLevel(languageProfile?.estimatedCefr, targetCefr);
+  const diff = compareCefrLevels(targetCefr, baselineCefr);
+
+  if (diff > 0) {
+    return { targetCefr, baselineCefr, relation: 'stretch' };
+  }
+  if (diff < 0) {
+    return { targetCefr, baselineCefr, relation: 'easier' };
+  }
+
+  return { targetCefr, baselineCefr, relation: 'matched' };
 }
 
 /**
@@ -90,9 +160,12 @@ export async function runCoachingRound(
 ): Promise<RunCoachingRoundResult> {
   const teacher = normalizeTeacherSelection(input.teacher);
   const review = normalizeReviewPreference(input.review);
-  const profileContext = input.auth.authenticated
-    ? await getProfileContext(input.auth.userId)
-    : null;
+  const [profileContext, languageProfile] = input.auth.authenticated
+    ? await Promise.all([
+        getProfileContext(input.auth.userId),
+        getSpeakerLanguageProfile(input.auth.userId),
+      ])
+    : [null, null];
 
   const { evaluation, overallScore, practiceMode, skillDomain } = await evaluateResponse({
     topicType: input.topicType,
@@ -106,13 +179,19 @@ export async function runCoachingRound(
     historyAttempts: input.historyAttempts,
     profileContext,
   });
+  const sameTopicProgress = buildSameTopicProgress(input.historyAttempts, overallScore);
+  const difficultySignal = buildDifficultySignal(languageProfile, input.topicContent);
 
-  const { reviewText, ttsText } = buildReviewTextOutput({
+  const { reviewText, speechScript, ttsText } = buildReviewTextOutput({
     teacher,
     evaluation,
     overallScore,
     skillDomain,
+    inputMethod: input.inputMethod,
     userResponse: input.userResponse,
+    languageProfile,
+    sameTopicProgress,
+    difficultySignal,
   });
 
   let submissionId: string | undefined;
@@ -131,22 +210,30 @@ export async function runCoachingRound(
       suggestedVocab: input.topicContent.suggestedVocab,
       sessionId,
       coachReviewText: reviewText,
+      speechScript,
       ttsText,
     });
 
     submissionId = persisted.submissionId;
     sessionId = persisted.sessionId;
   }
-  const audioReview = await buildAudioReview({
-    teacher,
-    review,
-    ttsText,
-  });
+  const audioReview = input.deferAudioReview
+    ? buildPendingAudioReview({
+        teacher,
+        review,
+        speechScript,
+        sessionId,
+      })
+    : await buildAudioReview({
+        teacher,
+        review,
+        speechScript,
+        sessionId,
+      });
   const htmlArtifact = buildHtmlArtifact({
     teacher,
     review,
     evaluation,
-    overallScore,
     reviewText,
     userResponse: input.userResponse,
     skillDomain,
@@ -163,8 +250,11 @@ export async function runCoachingRound(
     teacher,
     review,
     reviewText,
+    speechScript,
     ttsText,
     audioReview,
     htmlArtifact,
+    sameTopicProgress,
+    difficultySignal,
   };
 }

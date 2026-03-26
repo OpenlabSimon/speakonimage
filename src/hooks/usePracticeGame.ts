@@ -122,7 +122,7 @@ export function usePracticeGame(params: LaunchParams | null): UsePracticeGameRes
           break;
         case 'game-complete':
           setGameResult({
-            score: data.score,
+            score: typeof data.completed === 'number' ? data.completed : data.score,
             totalPossible: data.totalPossible,
             mistakes: data.mistakes || [],
           });

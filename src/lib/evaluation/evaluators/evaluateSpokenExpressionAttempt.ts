@@ -1,4 +1,5 @@
 import { getLLMProvider } from '@/lib/llm';
+import { resolveEvaluationModel } from '@/lib/llm/model-selection';
 import {
   ExpressionEvaluationSchema,
   buildExpressionEvaluationPrompt,
@@ -9,7 +10,7 @@ import type { EvaluateParams, EvaluationOutput } from './types';
 export async function evaluateSpokenExpressionAttempt(
   params: EvaluateParams
 ): Promise<EvaluationOutput> {
-  const llm = getLLMProvider();
+  const llm = getLLMProvider('critical');
   const vocabWords = params.suggestedVocab.map((v) => v.word);
   const grammarPoints = params.grammarHints?.map((g) => g.point) || [];
 
@@ -27,6 +28,7 @@ export async function evaluateSpokenExpressionAttempt(
   return llm.generateJSON(
     prompt,
     ExpressionEvaluationSchema,
-    getExpressionEvaluationSystemPrompt('voice')
+    getExpressionEvaluationSystemPrompt('voice'),
+    { model: resolveEvaluationModel() }
   );
 }

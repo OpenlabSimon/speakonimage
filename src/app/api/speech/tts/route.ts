@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { synthesizeWithElevenLabs } from '@/lib/speech/elevenlabs';
+import { synthesizeWithAzureTTS } from '@/lib/speech/azure';
+import { resolvePreferredTTSProvider } from '@/lib/speech/provider';
 
 // TTS provider types
 type TTSProvider = 'azure' | 'elevenlabs';
@@ -19,63 +20,11 @@ interface TTSRequest {
   voiceSettings?: VoiceSettings;
 }
 
-/**
- * Azure TTS using REST API
- * Docs: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech
- */
-async function azureTTS(text: string, voice?: string): Promise<ArrayBuffer> {
-  const key = process.env.AZURE_SPEECH_KEY;
-  const region = process.env.AZURE_SPEECH_REGION || 'westus3';
-
-  if (!key) {
-    throw new Error('AZURE_SPEECH_KEY not configured');
-  }
-
-  // Default to a natural English voice
-  const voiceName = voice || 'en-US-JennyNeural';
-
-  const ssml = `
-    <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
-      <voice name='${voiceName}'>
-        <prosody rate='0.9'>${escapeXml(text)}</prosody>
-      </voice>
-    </speak>
-  `.trim();
-
-  const response = await fetch(
-    `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,
-    {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': key,
-        'Content-Type': 'application/ssml+xml',
-        'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3',
-      },
-      body: ssml,
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Azure TTS failed: ${response.status} - ${errorText}`);
-  }
-
-  return response.arrayBuffer();
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body: TTSRequest = await request.json();
-    const { text, provider = 'azure', voice, voiceSettings } = body;
+    const { text, provider = 'azure', voice } = body;
+    const resolvedProvider = resolvePreferredTTSProvider(provider);
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
@@ -92,17 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let audioBuffer: ArrayBuffer;
-
-    if (provider === 'elevenlabs') {
-      audioBuffer = await synthesizeWithElevenLabs(
-        text,
-        voice || '21m00Tcm4TlvDq8ikWAM',
-        voiceSettings
-      );
-    } else {
-      audioBuffer = await azureTTS(text, voice);
-    }
+    const audioBuffer = await synthesizeWithAzureTTS(text, voice);
 
     // Return audio as base64 for easier client handling
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
@@ -112,7 +51,7 @@ export async function POST(request: NextRequest) {
       data: {
         audio: base64Audio,
         format: 'mp3',
-        provider,
+        provider: resolvedProvider,
       },
     });
   } catch (error) {

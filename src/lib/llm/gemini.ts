@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { ZodSchema } from 'zod';
-import { LLMProvider, LLMConfig, LLMError, withRetry } from './provider';
+import { LLMProvider, LLMConfig, LLMCallOptions, LLMError, withRetry } from './provider';
+import { normalizeOpenAICompatibleBaseUrl } from '@/lib/env-utils';
 
 // Extended config for proxy support
 export interface GeminiConfig extends LLMConfig {
@@ -23,7 +24,7 @@ export class GeminiProvider implements LLMProvider {
   constructor(config: GeminiConfig) {
     this.client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: config.baseUrl || 'https://hiapi.online/v1',
+      baseURL: normalizeOpenAICompatibleBaseUrl(config.baseUrl),
     });
     this.model = config.model || 'gemini-3-pro-preview';
     this.maxRetries = config.maxRetries ?? 1;
@@ -34,9 +35,11 @@ export class GeminiProvider implements LLMProvider {
   async generateJSON<T>(
     prompt: string,
     schema: ZodSchema<T>,
-    systemPrompt?: string
+    systemPrompt?: string,
+    options?: LLMCallOptions
   ): Promise<T> {
     return withRetry(async () => {
+      console.info(`[LLM hiapi] request model=${options?.model || this.model}`);
       const messages: OpenAI.ChatCompletionMessageParam[] = [];
 
       if (systemPrompt) {
@@ -55,7 +58,7 @@ export class GeminiProvider implements LLMProvider {
       try {
         completion = await this.client.chat.completions.create(
           {
-            model: this.model,
+            model: options?.model || this.model,
             messages,
             temperature: this.temperature,
             response_format: { type: 'json_object' },
@@ -104,11 +107,14 @@ export class GeminiProvider implements LLMProvider {
         );
       }
 
+      console.info(`[LLM hiapi] success model=${options?.model || this.model}`);
+
       return validated.data;
     }, this.maxRetries);
   }
 
-  async generateText(prompt: string, systemPrompt?: string): Promise<string> {
+  async generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string> {
+    console.info(`[LLM hiapi] request model=${options?.model || this.model}`);
     const messages: OpenAI.ChatCompletionMessageParam[] = [];
 
     if (systemPrompt) {
@@ -124,7 +130,7 @@ export class GeminiProvider implements LLMProvider {
     try {
       completion = await this.client.chat.completions.create(
         {
-          model: this.model,
+          model: options?.model || this.model,
           messages,
           temperature: this.temperature,
         },
@@ -143,6 +149,7 @@ export class GeminiProvider implements LLMProvider {
       clearTimeout(timeout);
     }
 
+    console.info(`[LLM hiapi] success model=${options?.model || this.model}`);
     return completion.choices[0]?.message?.content || '';
   }
 }

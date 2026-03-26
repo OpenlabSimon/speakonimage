@@ -5,6 +5,9 @@ vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/spaced-repetition/ReviewScheduler', () => ({
   syncReviewItems: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('@/lib/profile/recommendations', () => ({
+  buildEnhancedRecommendations: vi.fn(async ({ base }: { base: unknown }) => base),
+}));
 
 import { computeAndUpdateProfile } from '@/lib/profile/ProfileManager';
 

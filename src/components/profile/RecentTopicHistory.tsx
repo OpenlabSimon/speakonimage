@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import { useState } from 'react';
+
 interface RecentTopic {
   id: string;
   type: string;
@@ -25,6 +28,7 @@ function formatTime(value: string) {
 }
 
 export function RecentTopicHistory({ topics }: RecentTopicHistoryProps) {
+  const [showAll, setShowAll] = useState(false);
   if (topics.length === 0) {
     return (
       <div className="text-center py-6 text-gray-500 text-sm">
@@ -33,9 +37,11 @@ export function RecentTopicHistory({ topics }: RecentTopicHistoryProps) {
     );
   }
 
+  const visibleTopics = showAll ? topics : topics.slice(0, 2);
+
   return (
     <div className="space-y-3">
-      {topics.map((topic) => {
+      {visibleTopics.map((topic) => {
         const typeLabel = topic.type === 'translation' ? '翻译' : '表达';
         const latestText = topic.latestDraft?.trim() || topic.originalInput;
 
@@ -70,9 +76,27 @@ export function RecentTopicHistory({ topics }: RecentTopicHistoryProps) {
                 {latestText}
               </div>
             </div>
+
+            <div className="mt-4 flex justify-end">
+              <Link
+                href={`/topic/practice?topicId=${topic.id}`}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                继续学习
+              </Link>
+            </div>
           </article>
         );
       })}
+      {topics.length > 2 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((current) => !current)}
+          className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          {showAll ? '收起较早话题' : `展开另外 ${topics.length - 2} 个话题`}
+        </button>
+      )}
     </div>
   );
 }

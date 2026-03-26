@@ -17,6 +17,7 @@ import type {
   EvaluateParams,
   EvaluateResult,
 } from './evaluators/types';
+import type { LanguageProfile } from '@/types';
 
 export interface PersistParams {
   topicId: string;
@@ -31,6 +32,7 @@ export interface PersistParams {
   suggestedVocab: { word: string }[];
   sessionId?: string;
   coachReviewText?: string;
+  speechScript?: string;
   ttsText?: string;
 }
 
@@ -80,13 +82,27 @@ export async function getProfileContext(accountId: string): Promise<string | nul
   return buildProfileContext(speaker.id);
 }
 
+export async function getSpeakerLanguageProfile(accountId: string): Promise<LanguageProfile | null> {
+  const speaker = await prisma.speaker.findFirst({
+    where: { accountId },
+    orderBy: { createdAt: 'asc' },
+    select: { languageProfile: true },
+  });
+
+  if (!speaker?.languageProfile || typeof speaker.languageProfile !== 'object' || Array.isArray(speaker.languageProfile)) {
+    return null;
+  }
+
+  return speaker.languageProfile as unknown as LanguageProfile;
+}
+
 /**
  * Persist submission to database (submission, grammar errors, vocab, session messages).
  */
 export async function persistSubmission(params: PersistParams): Promise<PersistResult> {
   const {
     topicId, accountId, speakerId, inputMethod, userResponse,
-    audioUrl, evaluation, overallScore, topicType, suggestedVocab, sessionId, coachReviewText, ttsText,
+    audioUrl, evaluation, overallScore, topicType, suggestedVocab, sessionId, coachReviewText, speechScript, ttsText,
   } = params;
 
   // Get attempt number
@@ -187,12 +203,12 @@ export async function persistSubmission(params: PersistParams): Promise<PersistR
         role: 'user',
         content: userResponse,
         contentType: 'text',
-        metadata: { inputMethod, audioUrl },
+        metadata: { source: 'full_review', inputMethod, audioUrl },
       });
 
       const evaluationSummary = evaluation.type === 'translation'
-        ? `Score: ${overallScore}/100. ${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
-        : `Score: ${overallScore}/100. ${evaluation.relevance.comment} ${evaluation.depth.comment}`;
+        ? `${evaluation.semanticAccuracy.comment} ${evaluation.naturalness.comment}`
+        : `${evaluation.relevance.comment} ${evaluation.depth.comment}`;
 
       await addMessage({
         sessionId: activeSessionId,
@@ -200,6 +216,7 @@ export async function persistSubmission(params: PersistParams): Promise<PersistR
         content: evaluationSummary,
         contentType: 'evaluation',
         metadata: {
+          source: 'full_review',
           overallScore,
           estimatedCefr: evaluation.overallCefrEstimate,
           evaluationType: topicType,
@@ -213,10 +230,12 @@ export async function persistSubmission(params: PersistParams): Promise<PersistR
           content: coachReviewText,
           contentType: 'evaluation',
           metadata: {
+            source: 'full_review',
             kind: 'coach_review',
             overallScore,
             estimatedCefr: evaluation.overallCefrEstimate,
             evaluationType: topicType,
+            speechScript,
             ttsText,
           },
         });

@@ -1,4 +1,5 @@
 import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
+import type { DifficultySignal, SameTopicProgress } from '@/domains/runtime/round-orchestrator';
 import type { InputMethod, PracticeMode, SkillDomain } from '@/types';
 
 export const LATEST_COACH_ROUND_STORAGE_KEY = 'speakonimage-latest-coach-round';
@@ -7,18 +8,28 @@ const MAX_COACH_ROUND_HISTORY = 12;
 
 export interface StoredCoachRound {
   id: string;
+  topic?: {
+    id?: string;
+    type: 'translation' | 'expression';
+    originalInput: string;
+  } | null;
   teacher: TeacherSelection;
   reviewMode: ReviewMode;
   autoPlayAudio: boolean;
   reviewText: string;
-  ttsText: string;
+  speechScript: string;
+  /** @deprecated Use speechScript instead. */
+  ttsText?: string;
   audioReview: AudioReview;
   htmlArtifact: HtmlArtifact;
   overallScore: number;
   userResponse: string;
+  audioUrl?: string;
   inputMethod: InputMethod;
   practiceMode?: PracticeMode;
   skillDomain?: SkillDomain;
+  sameTopicProgress?: SameTopicProgress | null;
+  difficultySignal?: DifficultySignal | null;
   createdAt: string;
 }
 
@@ -40,6 +51,9 @@ function normalizeStoredCoachRound(round: StorableCoachRoundInput | null): Store
 
   return {
     ...round,
+    topic: round.topic ?? null,
+    speechScript: round.speechScript || round.ttsText || '',
+    ttsText: round.ttsText || round.speechScript || '',
     id: buildRoundId(round),
   };
 }

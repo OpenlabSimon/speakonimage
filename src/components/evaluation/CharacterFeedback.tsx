@@ -9,7 +9,6 @@ import type { TranslationEvaluationScores, ExpressionEvaluationScores } from '@/
 
 interface CharacterFeedbackProps {
   characterId: TeacherCharacterId;
-  overallScore: number;
   evaluation: TranslationEvaluationScores | ExpressionEvaluationScores;
   userResponse: string;
   topicType: string;
@@ -19,7 +18,6 @@ interface CharacterFeedbackProps {
 
 export function CharacterFeedback({
   characterId,
-  overallScore,
   evaluation,
   userResponse,
   topicType,
@@ -42,7 +40,6 @@ export function CharacterFeedback({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           characterId,
-          overallScore,
           evaluation,
           userResponse,
           topicType,
@@ -64,7 +61,7 @@ export function CharacterFeedback({
     } finally {
       setIsLoading(false);
     }
-  }, [characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod]);
+  }, [characterId, evaluation, userResponse, topicType, chinesePrompt, inputMethod]);
 
   useEffect(() => {
     fetchFeedback();

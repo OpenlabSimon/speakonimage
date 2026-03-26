@@ -17,9 +17,9 @@ export function ChinesePromptCard({ topicContent }: ChinesePromptCardProps) {
 // Translation Challenge Card
 function TranslationPromptCard({ topic }: { topic: TranslationTopic }) {
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-100">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-4 sm:p-6">
       {/* Type badge */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="px-3 py-1 bg-blue-500 text-white text-sm font-medium rounded-full">
           翻译挑战
         </span>
@@ -30,7 +30,7 @@ function TranslationPromptCard({ topic }: { topic: TranslationTopic }) {
 
       {/* Chinese prompt */}
       <div className="mb-6">
-        <div className="text-2xl leading-relaxed text-gray-800 font-medium">
+        <div className="text-xl font-medium leading-relaxed text-gray-800 sm:text-2xl">
           {topic.chinesePrompt}
         </div>
       </div>
@@ -61,9 +61,9 @@ function TranslationPromptCard({ topic }: { topic: TranslationTopic }) {
 // Topic Expression Card
 function ExpressionPromptCard({ topic }: { topic: ExpressionTopic }) {
   return (
-    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-6 border border-emerald-100">
+    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-100 p-4 sm:p-6">
       {/* Type badge */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="px-3 py-1 bg-emerald-500 text-white text-sm font-medium rounded-full">
           话题表达
         </span>
@@ -71,7 +71,7 @@ function ExpressionPromptCard({ topic }: { topic: ExpressionTopic }) {
 
       {/* Chinese prompt */}
       <div className="mb-6">
-        <div className="text-2xl leading-relaxed text-gray-800 font-medium">
+        <div className="text-xl font-medium leading-relaxed text-gray-800 sm:text-2xl">
           {topic.chinesePrompt}
         </div>
       </div>

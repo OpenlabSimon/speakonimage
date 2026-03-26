@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { normalizeCefrLevel } from '@/lib/cefr';
+import { withEvaluationLevel } from '@/lib/evaluation/evaluators/levels';
 
 // Schema for semantic point - can be string or object
 const SemanticPointSchema = z.union([
@@ -13,20 +15,17 @@ const SemanticPointSchema = z.union([
 // Schema for translation evaluation output
 export const TranslationEvaluationSchema = z.object({
   type: z.literal('translation'),
-  semanticAccuracy: z.object({
-    score: z.number().min(0).max(100),
+  semanticAccuracy: withEvaluationLevel({
     conveyedPoints: z.array(SemanticPointSchema),
     missedPoints: z.array(SemanticPointSchema),
     comment: z.string(),
   }),
-  naturalness: z.object({
-    score: z.number().min(0).max(100),
+  naturalness: withEvaluationLevel({
     issues: z.array(z.string()),
     suggestions: z.array(z.string()),
     comment: z.string(),
   }),
-  grammar: z.object({
-    score: z.number().min(0).max(100),
+  grammar: withEvaluationLevel({
     errors: z.array(z.object({
       original: z.string(),
       corrected: z.string(),
@@ -39,13 +38,14 @@ export const TranslationEvaluationSchema = z.object({
       }),
     })),
   }),
-  vocabulary: z.object({
-    score: z.number().min(0).max(100),
+  vocabulary: withEvaluationLevel({
     goodChoices: z.array(z.string()),
     improvements: z.array(z.string()),
     comment: z.string(),
   }),
-  overallCefrEstimate: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']),
+  overallCefrEstimate: z
+    .string()
+    .transform((value) => normalizeCefrLevel(value)),
   betterExpressions: z.array(z.string()).min(1).max(3),
   suggestions: z.object({
     immediate: z.string(),
@@ -54,6 +54,23 @@ export const TranslationEvaluationSchema = z.object({
 });
 
 export type TranslationEvaluationOutput = z.infer<typeof TranslationEvaluationSchema>;
+
+function compactText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function buildHistorySummary(historyAttempts?: { text: string; score: number }[]): string | null {
+  if (!historyAttempts || historyAttempts.length === 0) return null;
+
+  const latest = historyAttempts[historyAttempts.length - 1];
+
+  return [
+    `count=${historyAttempts.length}`,
+    `last_text="${compactText(latest.text, 80)}"`,
+  ].join('; ');
+}
 
 // System prompt for translation evaluation
 export function getTranslationEvaluationSystemPrompt(inputMethod: 'voice' | 'text' = 'text'): string {
@@ -82,6 +99,7 @@ export function getTranslationEvaluationSystemPrompt(inputMethod: 'voice' | 'tex
 - 对创意表达要鼓励，只要语义正确
 - 语法错误要具体指出并给出修正
 - 提供2-3个更好的表达方式供学习
+- 不要输出数字分数，所有维度只用 level 表示
 
 请始终返回符合schema的有效JSON。`;
 }
@@ -115,16 +133,17 @@ ${userResponse}
 ${suggestedVocab.join(', ')}
 `;
 
-  if (historyAttempts && historyAttempts.length > 0) {
+  const historySummary = buildHistorySummary(historyAttempts);
+  if (historySummary) {
     prompt += `
-## 历史尝试
-${historyAttempts.map((h, i) => `尝试 ${i + 1}: "${h.text}" (得分: ${h.score})`).join('\n')}
+## 历史摘要
+${historySummary}
 `;
   }
 
   if (profileContext) {
     prompt += `
-## 学生背景（个性化反馈参考）
+## 画像参考
 ${profileContext}
 `;
   }
@@ -133,20 +152,20 @@ ${profileContext}
 请返回JSON格式的评价，包含：
 1. type: "translation"
 2. semanticAccuracy: 语义准确度评估
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - conveyedPoints: 正确传达的要点（每个要点标注是否传达）
    - missedPoints: 遗漏或错误的要点
    - comment: 总体评语
 3. naturalness: 表达自然度
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - issues: 不地道的表达列表
    - suggestions: 更地道的建议
    - comment: 评语
 4. grammar: 语法评估
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - errors: 错误列表（每个包含 original, corrected, rule, severity）
 5. vocabulary: 用词评估
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - goodChoices: 用词恰当之处
    - improvements: 可改进的用词
    - comment: 评语
@@ -154,6 +173,7 @@ ${profileContext}
 7. betterExpressions: 2-3个更好的表达方式
 8. suggestions: { immediate: 即时建议, longTerm: 长期建议 }
 
+不要返回任何数字分数，只返回 level。
 只返回有效JSON，不要markdown格式。`;
 
   return prompt;

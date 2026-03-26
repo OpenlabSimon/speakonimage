@@ -46,16 +46,16 @@ export function TextInput({ onSubmit, disabled, placeholder, initialValue = '' }
           ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''}
         `}
       />
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-gray-500">
           {wordCount} 词 / {text.length} 字符
-          <span className="ml-2 text-xs text-gray-400">(Ctrl+Enter 提交)</span>
+          <span className="ml-0 block text-xs text-gray-400 sm:ml-2 sm:inline">(Ctrl+Enter 提交)</span>
         </div>
         <button
           onClick={handleSubmit}
           disabled={disabled || !text.trim()}
           className={`
-            px-6 py-2 rounded-lg font-medium transition-colors
+            min-h-12 w-full rounded-lg px-6 py-2 font-medium transition-colors sm:w-auto
             ${disabled || !text.trim()
               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
               : 'bg-blue-500 text-white hover:bg-blue-600'

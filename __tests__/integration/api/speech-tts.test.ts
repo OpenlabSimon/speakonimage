@@ -19,7 +19,6 @@ describe('POST /api/speech/tts', () => {
     mockFetch.mockReset();
     process.env.AZURE_SPEECH_KEY = 'test-key';
     process.env.AZURE_SPEECH_REGION = 'westus3';
-    process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
   });
 
   it('returns audio for Azure TTS', async () => {
@@ -42,7 +41,7 @@ describe('POST /api/speech/tts', () => {
     expect(data.data.provider).toBe('azure');
   });
 
-  it('returns audio for ElevenLabs TTS', async () => {
+  it('coerces legacy elevenlabs requests to Azure TTS', async () => {
     const audioBuffer = new ArrayBuffer(100);
     mockFetch.mockResolvedValue({
       ok: true,
@@ -57,7 +56,24 @@ describe('POST /api/speech/tts', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
-    expect(data.data.provider).toBe('elevenlabs');
+    expect(data.data.provider).toBe('azure');
+  });
+
+  it('returns Azure audio even when the client requests elevenlabs', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(100)),
+    });
+
+    const response = await POST(makeRequest({
+      text: 'Hello world',
+      provider: 'elevenlabs',
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data.provider).toBe('azure');
   });
 
   it('returns 400 for missing text', async () => {

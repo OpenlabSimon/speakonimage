@@ -1,25 +1,23 @@
 import { z } from 'zod';
+import { normalizeCefrLevel } from '@/lib/cefr';
+import { withEvaluationLevel } from '@/lib/evaluation/evaluators/levels';
 
 // Schema for expression evaluation output
 export const ExpressionEvaluationSchema = z.object({
   type: z.literal('expression'),
-  relevance: z.object({
-    score: z.number().min(0).max(100),
+  relevance: withEvaluationLevel({
     comment: z.string(),
   }),
-  depth: z.object({
-    score: z.number().min(0).max(100),
+  depth: withEvaluationLevel({
     strengths: z.array(z.string()),
     suggestions: z.array(z.string()),
     comment: z.string(),
   }),
-  creativity: z.object({
-    score: z.number().min(0).max(100),
+  creativity: withEvaluationLevel({
     highlights: z.array(z.string()),
     comment: z.string(),
   }),
-  languageQuality: z.object({
-    score: z.number().min(0).max(100),
+  languageQuality: withEvaluationLevel({
     grammarErrors: z.array(z.object({
       original: z.string(),
       corrected: z.string(),
@@ -34,7 +32,9 @@ export const ExpressionEvaluationSchema = z.object({
     vocabularyFeedback: z.string(),
     comment: z.string(),
   }),
-  overallCefrEstimate: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']),
+  overallCefrEstimate: z
+    .string()
+    .transform((value) => normalizeCefrLevel(value)),
   betterExpressions: z.array(z.string()).min(1).max(3),
   suggestions: z.object({
     immediate: z.string(),
@@ -43,6 +43,23 @@ export const ExpressionEvaluationSchema = z.object({
 });
 
 export type ExpressionEvaluationOutput = z.infer<typeof ExpressionEvaluationSchema>;
+
+function compactText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function buildHistorySummary(historyAttempts?: { text: string; score: number }[]): string | null {
+  if (!historyAttempts || historyAttempts.length === 0) return null;
+
+  const latest = historyAttempts[historyAttempts.length - 1];
+
+  return [
+    `count=${historyAttempts.length}`,
+    `last_text="${compactText(latest.text, 80)}"`,
+  ].join('; ');
+}
 
 // System prompt for expression evaluation
 export function getExpressionEvaluationSystemPrompt(inputMethod: 'voice' | 'text' = 'text'): string {
@@ -71,6 +88,7 @@ export function getExpressionEvaluationSystemPrompt(inputMethod: 'voice' | 'text
 - 语法错误要具体指出但不苛责
 - 关注表达的丰富性和个性化
 - 提供2-3个表达建议供学习
+- 不要输出数字分数，所有维度只用 level 表示
 
 请始终返回符合schema的有效JSON。`;
 }
@@ -108,16 +126,17 @@ ${suggestedVocab.join(', ')}
 ${grammarHints.join(', ')}
 `;
 
-  if (historyAttempts && historyAttempts.length > 0) {
+  const historySummary = buildHistorySummary(historyAttempts);
+  if (historySummary) {
     prompt += `
-## 历史尝试
-${historyAttempts.map((h, i) => `尝试 ${i + 1}: "${h.text}" (得分: ${h.score})`).join('\n')}
+## 历史摘要
+${historySummary}
 `;
   }
 
   if (profileContext) {
     prompt += `
-## 学生背景（个性化反馈参考）
+## 画像参考
 ${profileContext}
 `;
   }
@@ -126,19 +145,19 @@ ${profileContext}
 请返回JSON格式的评价，包含：
 1. type: "expression"
 2. relevance: 内容相关性
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - comment: 评语
 3. depth: 内容丰富度
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - strengths: 表达的亮点
    - suggestions: 可以补充的内容
    - comment: 评语
 4. creativity: 表达创意度
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - highlights: 创意亮点
    - comment: 评语
 5. languageQuality: 语言质量
-   - score: 0-100分
+   - level: 从 excellent / strong / solid / developing / limited 里选一个
    - grammarErrors: 语法错误列表（每个包含 original, corrected, rule, severity）
    - vocabularyFeedback: 用词反馈
    - comment: 评语
@@ -146,6 +165,7 @@ ${profileContext}
 7. betterExpressions: 2-3个表达建议（如何让表达更好）
 8. suggestions: { immediate: 即时建议, longTerm: 长期建议 }
 
+不要返回任何数字分数，只返回 level。
 只返回有效JSON，不要markdown格式。`;
 
   return prompt;

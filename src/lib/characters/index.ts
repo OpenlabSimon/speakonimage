@@ -16,8 +16,8 @@ export const CHARACTERS: Record<TeacherCharacterId, TeacherCharacter> = {
       ring: 'ring-slate-500',
     },
     voiceConfig: {
-      voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam - distinguished British male
-      modelId: 'eleven_multilingual_v2',
+      voiceId: 'en-GB-OllieMultilingualNeural',
+      modelId: 'azure',
       stability: 0.55,
       similarityBoost: 0.78,
       style: 0.35,
@@ -56,8 +56,8 @@ export const CHARACTERS: Record<TeacherCharacterId, TeacherCharacter> = {
       ring: 'ring-rose-500',
     },
     voiceConfig: {
-      voiceId: 'EXAVITQu4vr4xnSDxMaL', // Bella - warm female
-      modelId: 'eleven_multilingual_v2',
+      voiceId: 'en-US-AvaMultilingualNeural',
+      modelId: 'azure',
       stability: 0.7,
       similarityBoost: 0.8,
       style: 0.2,
@@ -97,8 +97,8 @@ export const CHARACTERS: Record<TeacherCharacterId, TeacherCharacter> = {
       ring: 'ring-orange-500',
     },
     voiceConfig: {
-      voiceId: 'VR6AewLTigWG4xSOukaG', // Arnold - energetic American male
-      modelId: 'eleven_multilingual_v2',
+      voiceId: 'en-US-SteffanMultilingualNeural',
+      modelId: 'azure',
       stability: 0.5,
       similarityBoost: 0.75,
       style: 0.45,

@@ -1,13 +1,14 @@
 import {
   buildTranslationPrompt,
   buildExpressionPrompt,
-  buildUnifiedPrompt,
+  buildTopicClassificationPrompt,
   buildTopicPrompt,
   getSchemaForType,
   getSystemPromptForType,
   TranslationTopicSchema,
   ExpressionTopicSchema,
   TopicGenerationSchema,
+  TopicClassificationSchema,
   TRANSLATION_SYSTEM_PROMPT,
   EXPRESSION_SYSTEM_PROMPT,
 } from '@/lib/llm/prompts/topic-generate';
@@ -48,19 +49,19 @@ describe('buildExpressionPrompt', () => {
   });
 });
 
-describe('buildUnifiedPrompt', () => {
+describe('buildTopicClassificationPrompt', () => {
   it('includes the user input text', () => {
-    const prompt = buildUnifiedPrompt('如果明天下雨');
+    const prompt = buildTopicClassificationPrompt('如果明天下雨');
     expect(prompt).toContain('如果明天下雨');
   });
 
   it('includes the target CEFR level', () => {
-    const prompt = buildUnifiedPrompt('如果明天下雨', 'A2');
+    const prompt = buildTopicClassificationPrompt('如果明天下雨', 'A2');
     expect(prompt).toContain('A2');
   });
 
   it('defaults to B1 when no CEFR level is provided', () => {
-    const prompt = buildUnifiedPrompt('some topic');
+    const prompt = buildTopicClassificationPrompt('some topic');
     expect(prompt).toContain('B1');
   });
 });
@@ -88,6 +89,23 @@ describe('getSchemaForType', () => {
 
   it('returns ExpressionTopicSchema for expression', () => {
     expect(getSchemaForType('expression')).toBe(ExpressionTopicSchema);
+  });
+});
+
+describe('TopicClassificationSchema', () => {
+  it('validates a well-formed classification result', () => {
+    const result = TopicClassificationSchema.safeParse({
+      type: 'translation',
+      reason: '完整句子',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid type values', () => {
+    const result = TopicClassificationSchema.safeParse({
+      type: 'other',
+    });
+    expect(result.success).toBe(false);
   });
 });
 

@@ -13,6 +13,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGuestLoading, setIsGuestLoading] = useState(false);
 
+  const getCallbackUrl = () => {
+    if (typeof window === 'undefined') {
+      return '/';
+    }
+
+    return new URLSearchParams(window.location.search).get('callbackUrl') || '/';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -29,7 +37,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(result.error);
       } else {
-        router.push('/');
+        router.push(getCallbackUrl());
         router.refresh();
       }
     } catch {
@@ -40,7 +48,7 @@ export default function LoginPage() {
   };
 
   const handleOAuthSignIn = (provider: string) => {
-    signIn(provider, { callbackUrl: '/' });
+    signIn(provider, { callbackUrl: getCallbackUrl() });
   };
 
   const handleGuestSignIn = async () => {
@@ -51,7 +59,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(result.error);
       } else {
-        router.push('/');
+        router.push(getCallbackUrl());
         router.refresh();
       }
     } catch {

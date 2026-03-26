@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useState, useRef } from 'react';
+import { getApiErrorMessage, parseJsonResponse } from '@/lib/http/parse-json-response';
+import { resolvePreferredTTSProvider } from '@/lib/speech/provider';
 
 export type TTSProvider = 'azure' | 'elevenlabs';
 
@@ -27,16 +29,17 @@ export interface UseTTSResult {
 }
 
 /**
- * Hook for Text-to-Speech using Azure or ElevenLabs
- * - Azure: for words and topic content
- * - ElevenLabs: for feedback and reviews
+ * Hook for Text-to-Speech.
+ * The app currently routes all playback through Azure TTS.
  */
 export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
   const { provider = 'azure', voice, voiceSettings } = options;
+  const effectiveProvider = resolvePreferredTTSProvider(provider);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const stop = useCallback(() => {
     if (audioRef.current) {
@@ -44,7 +47,36 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
       audioRef.current.currentTime = 0;
       audioRef.current = null;
     }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      utteranceRef.current = null;
+    }
     setIsSpeaking(false);
+  }, []);
+
+  const speakWithBrowser = useCallback(async (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      throw new Error('TTS service unavailable');
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US';
+    utteranceRef.current = utterance;
+
+    await new Promise<void>((resolve, reject) => {
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        utteranceRef.current = null;
+        resolve();
+      };
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+        utteranceRef.current = null;
+        reject(new Error('Browser speech synthesis failed'));
+      };
+      window.speechSynthesis.speak(utterance);
+    });
   }, []);
 
   const speak = useCallback(async (text: string) => {
@@ -59,13 +91,18 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
       const response = await fetch('/api/speech/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, provider, voice, ...(voiceSettings && { voiceSettings }) }),
+        body: JSON.stringify({ text, provider: effectiveProvider, voice, ...(voiceSettings && { voiceSettings }) }),
       });
 
-      const result = await response.json();
+      const parsed = await parseJsonResponse<{
+        success?: boolean;
+        error?: string;
+        data?: { audio: string };
+      }>(response);
+      const result = parsed.data;
 
-      if (!result.success) {
-        throw new Error(result.error || 'TTS failed');
+      if (!parsed.ok || !result?.success || !result.data?.audio) {
+        throw new Error(getApiErrorMessage(parsed, 'TTS failed'));
       }
 
       // Convert base64 to audio and play
@@ -92,11 +129,22 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSResult {
       await audio.play();
     } catch (err) {
       console.error('TTS error:', err);
-      setError(err instanceof Error ? err.message : 'TTS failed');
+      try {
+        await speakWithBrowser(text);
+        setError(null);
+      } catch (fallbackError) {
+        setError(
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : err instanceof Error
+            ? err.message
+            : 'TTS failed'
+        );
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [provider, voice, voiceSettings, stop]);
+  }, [effectiveProvider, voice, voiceSettings, stop, speakWithBrowser]);
 
   return {
     speak,
@@ -126,8 +174,8 @@ export function useAzureTTS(voice?: string): UseTTSResult {
 }
 
 /**
- * Convenience hook for feedback/reviews (ElevenLabs)
+ * Backward-compatible alias while the app is Azure-only.
  */
 export function useElevenLabsTTS(voice?: string): UseTTSResult {
-  return useTTS({ provider: 'elevenlabs', voice });
+  return useTTS({ provider: 'azure', voice });
 }

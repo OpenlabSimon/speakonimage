@@ -23,6 +23,24 @@ vi.mock('@/lib/profile/ProfileManager', () => ({
     grammarProfile: {
       topErrors: [],
     },
+    interests: [],
+    goals: [],
+    entities: [],
+    recentVocabulary: [],
+    memorySnippets: [],
+    coachMemory: {
+      longTermReminders: [],
+      currentRoundReminders: [],
+    },
+    recommendations: {
+      topics: [],
+      vocabulary: [],
+      examples: [],
+      nextFocus: [],
+      generatedAt: new Date().toISOString(),
+    },
+    recommendationFeedback: [],
+    hiddenInterestKeys: [],
   }),
 }));
 vi.mock('@/lib/spaced-repetition/ReviewScheduler', () => ({
@@ -121,6 +139,24 @@ describe('GET /api/user/profile', () => {
       grammarProfile: {
         topErrors: [],
       },
+      interests: [],
+      goals: [],
+      entities: [],
+      recentVocabulary: [],
+      memorySnippets: [],
+      coachMemory: {
+        longTermReminders: [],
+        currentRoundReminders: [],
+      },
+      recommendations: {
+        topics: [],
+        vocabulary: [],
+        examples: [],
+        nextFocus: [],
+        generatedAt: new Date().toISOString(),
+      },
+      recommendationFeedback: [],
+      hiddenInterestKeys: [],
     };
 
     setAuthenticated({ id: 'user-1' });

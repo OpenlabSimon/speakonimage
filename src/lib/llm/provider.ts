@@ -1,5 +1,9 @@
 import { ZodSchema } from 'zod';
 
+export interface LLMCallOptions {
+  model?: string;
+}
+
 // LLM Provider interface - provider-agnostic
 export interface LLMProvider {
   /**
@@ -12,7 +16,8 @@ export interface LLMProvider {
   generateJSON<T>(
     prompt: string,
     schema: ZodSchema<T>,
-    systemPrompt?: string
+    systemPrompt?: string,
+    options?: LLMCallOptions
   ): Promise<T>;
 
   /**
@@ -21,7 +26,7 @@ export interface LLMProvider {
    * @param systemPrompt Optional system prompt
    * @returns Text response
    */
-  generateText(prompt: string, systemPrompt?: string): Promise<string>;
+  generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string>;
 
   /**
    * Provider name for identification

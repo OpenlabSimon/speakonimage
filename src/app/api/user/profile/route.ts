@@ -2,6 +2,16 @@ import { NextResponse } from 'next/server';
 import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { computeAndUpdateProfile } from '@/lib/profile/ProfileManager';
+import type {
+  InterestSignal,
+  GoalSignal,
+  EntitySignal,
+  VocabularyMemory,
+  MemorySnippet,
+  CoachMemoryProfile,
+  RecommendationProfile,
+  RecommendationFeedbackEntry,
+} from '@/lib/profile/memory';
 import type { ApiResponse } from '@/types';
 
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -24,6 +34,29 @@ interface StoredProfile {
       trend: 'improving' | 'stable' | 'increasing';
     }>;
   };
+  usageProfile?: {
+    snapshots: Array<{
+      key: 'latest_attempt' | 'rolling_30m' | 'daily';
+      label: string;
+      sampleCount: number;
+      strengths: string[];
+      weaknesses: string[];
+      preferredVocabulary: string[];
+      avoidVocabulary: string[];
+      preferredExpressions: string[];
+      avoidGrammarPatterns: string[];
+      updatedAt: string;
+    }>;
+  };
+  interests?: InterestSignal[];
+  goals?: GoalSignal[];
+  entities?: EntitySignal[];
+  recentVocabulary?: VocabularyMemory[];
+  memorySnippets?: MemorySnippet[];
+  coachMemory?: CoachMemoryProfile;
+  recommendations?: RecommendationProfile;
+  recommendationFeedback?: RecommendationFeedbackEntry[];
+  hiddenInterestKeys?: string[];
 }
 
 function isStoredProfile(value: unknown): value is StoredProfile {
@@ -56,10 +89,30 @@ function isCoachReviewMetadata(value: unknown): value is { kind: string } {
   return typeof (value as { kind?: unknown }).kind === 'string';
 }
 
-function buildEvaluationSummary(
-  evaluation: unknown,
-  fallbackScore?: number | null
-): string | null {
+function extractMessageSpeechScript(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const speechScript = (value as { speechScript?: unknown }).speechScript;
+  if (typeof speechScript === 'string' && speechScript.trim().length > 0) {
+    return speechScript;
+  }
+
+  const ttsText = (value as { ttsText?: unknown }).ttsText;
+  return typeof ttsText === 'string' && ttsText.trim().length > 0 ? ttsText : null;
+}
+
+function extractMessageAudioUrl(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const audioUrl = (value as { audioUrl?: unknown }).audioUrl;
+  return typeof audioUrl === 'string' && audioUrl.trim().length > 0 ? audioUrl : null;
+}
+
+function buildEvaluationSummary(evaluation: unknown): string | null {
   if (!evaluation || typeof evaluation !== 'object' || Array.isArray(evaluation)) {
     return null;
   }
@@ -67,12 +120,11 @@ function buildEvaluationSummary(
   const record = evaluation as Record<string, unknown>;
   const type = record.type;
   const cefr = typeof record.overallCefrEstimate === 'string' ? record.overallCefrEstimate : null;
-  const scoreText = typeof fallbackScore === 'number' ? `本轮得分 ${fallbackScore}/100。` : '';
 
   if (type === 'translation') {
     const semanticComment = (record.semanticAccuracy as { comment?: unknown } | undefined)?.comment;
     const naturalnessComment = (record.naturalness as { comment?: unknown } | undefined)?.comment;
-    const parts = [scoreText, semanticComment, naturalnessComment, cefr ? `当前估计水平 ${cefr}。` : '']
+    const parts = [semanticComment, naturalnessComment, cefr ? `当前估计水平 ${cefr}。` : '']
       .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
     return parts.length > 0 ? parts.join(' ') : null;
   }
@@ -81,21 +133,12 @@ function buildEvaluationSummary(
     const relevanceComment = (record.relevance as { comment?: unknown } | undefined)?.comment;
     const depthComment = (record.depth as { comment?: unknown } | undefined)?.comment;
     const languageComment = (record.languageQuality as { comment?: unknown } | undefined)?.comment;
-    const parts = [scoreText, relevanceComment, depthComment, languageComment, cefr ? `当前估计水平 ${cefr}。` : '']
+    const parts = [relevanceComment, depthComment, languageComment, cefr ? `当前估计水平 ${cefr}。` : '']
       .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
     return parts.length > 0 ? parts.join(' ') : null;
   }
 
   return null;
-}
-
-function extractOverallScore(value: unknown): number | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const score = (value as { overallScore?: unknown }).overallScore;
-  return typeof score === 'number' ? score : null;
 }
 
 /**
@@ -138,11 +181,12 @@ export async function GET() {
         select: {
           id: true,
           transcribedText: true,
+          rawAudioUrl: true,
           evaluation: true,
           difficultyAssessment: true,
           createdAt: true,
           topic: {
-            select: { type: true, originalInput: true },
+            select: { id: true, type: true, originalInput: true },
           },
         },
       }),
@@ -198,23 +242,6 @@ export async function GET() {
       }),
     ]);
 
-    // Calculate average score from recent submissions
-    let avgScore = 0;
-    if (recentSubmissions.length > 0) {
-      const scores = recentSubmissions
-        .map((s) => {
-          const eval_ = s.evaluation as Record<string, unknown> | null;
-          if (!eval_) return null;
-          // Try to get score from difficultyAssessment or calculate from evaluation
-          const da = s.difficultyAssessment as { overallScore?: number } | null;
-          return da?.overallScore ?? null;
-        })
-        .filter((s): s is number => s !== null);
-      if (scores.length > 0) {
-        avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-      }
-    }
-
     // Count unique active days
     const uniqueDays = new Set(
       activeDays.map((d) =>
@@ -250,6 +277,8 @@ export async function GET() {
       ...coachReviewMessages.map((message) => ({
         id: message.id,
         content: message.content,
+        speechScript: extractMessageSpeechScript(message.metadata) ?? message.content,
+        audioUrl: extractMessageAudioUrl(message.metadata),
         createdAt: message.createdAt,
         topic: message.session.topic,
         source: 'coach_review' as const,
@@ -257,10 +286,9 @@ export async function GET() {
       ...recentSubmissions
         .map((submission) => ({
           id: `submission-${submission.id}`,
-          content: buildEvaluationSummary(
-            submission.evaluation,
-            extractOverallScore(submission.difficultyAssessment)
-          ),
+          content: buildEvaluationSummary(submission.evaluation),
+          speechScript: null,
+          audioUrl: null,
           createdAt: submission.createdAt,
           topic: submission.topic,
           source: 'evaluation_summary' as const,
@@ -269,6 +297,8 @@ export async function GET() {
         .map((item) => ({
           ...item,
           content: item.content ?? '',
+          speechScript: item.speechScript ?? item.content ?? '',
+          audioUrl: item.audioUrl ?? null,
         })),
     ]
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -279,7 +309,6 @@ export async function GET() {
       stats: {
         topicCount: number;
         submissionCount: number;
-        avgScore: number;
         streak: number;
         vocabSize: number;
         activeDays: number;
@@ -297,6 +326,8 @@ export async function GET() {
       recentCoachFeedback: Array<{
         id: string;
         content: string;
+        speechScript: string;
+        audioUrl: string | null;
         createdAt: Date;
         source: 'coach_review' | 'evaluation_summary';
         topic: {
@@ -312,7 +343,6 @@ export async function GET() {
         stats: {
           topicCount,
           submissionCount,
-          avgScore,
           streak,
           vocabSize: profile.vocabularyProfile.uniqueWordCount,
           activeDays: uniqueDays,

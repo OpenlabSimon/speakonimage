@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
         topicId,
         sessionId,
       },
+      deferAudioReview: true,
     });
 
     return NextResponse.json<ApiResponse<{

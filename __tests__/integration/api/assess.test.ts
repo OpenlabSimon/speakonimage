@@ -35,6 +35,12 @@ describe('POST /api/assess', () => {
     expect(data.data.estimatedLevel).toBe('B1');
     expect(data.data.confidence).toBe(0.7);
     expect(data.data.analysis).toBeDefined();
+    expect(data.data.reviewText).toContain('先说结论');
+    expect(data.data.speechScript).toContain('下一步你就顺着这段自我介绍继续优化');
+    expect(data.data.teacher).toEqual({ soulId: 'default' });
+    expect(data.data.review).toEqual({ mode: 'all', autoPlayAudio: true });
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.requestToken).toBeTruthy();
   });
 
   it('returns 400 for too short introduction', async () => {

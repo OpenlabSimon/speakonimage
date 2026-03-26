@@ -85,6 +85,8 @@ describe('POST /api/topics/generate', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
+    expect(mockLLMProvider.generateJSON).toHaveBeenCalledTimes(1);
+    expect(mockLLMProvider.generateJSON.mock.calls[0]?.[3]).toEqual({ model: 'gemini-2.5-flash' });
   });
 
   it('does not save to database when unauthenticated', async () => {

@@ -222,16 +222,19 @@ export async function POST(request: NextRequest) {
         guidingQuestions: topicData.guidingQuestions,
         suggestedVocab: topicData.suggestedVocab || [],
         grammarHints: topicData.grammarHints,
+        difficultyMetadata: topicData.difficultyMetadata,
       },
       userResponse: transcribedText,
       inputMethod: 'voice',
       teacher,
       review,
+      historyAttempts: topicData.historyAttempts,
       persistence: {
         topicId: topicId || undefined,
         sessionId: sessionId || undefined,
         audioUrl,
       },
+      deferAudioReview: true,
     });
 
     return NextResponse.json<ApiResponse<{
@@ -248,9 +251,12 @@ export async function POST(request: NextRequest) {
       teacher: typeof round.teacher;
       review: typeof round.review;
       reviewText: string;
+      speechScript: string;
       ttsText: string;
       audioReview: typeof round.audioReview;
       htmlArtifact: typeof round.htmlArtifact;
+      sameTopicProgress: typeof round.sameTopicProgress;
+      difficultySignal: typeof round.difficultySignal;
     }>>({
       success: true,
       data: {
@@ -267,9 +273,12 @@ export async function POST(request: NextRequest) {
         teacher: round.teacher,
         review: round.review,
         reviewText: round.reviewText,
+        speechScript: round.speechScript,
         ttsText: round.ttsText,
         audioReview: round.audioReview,
         htmlArtifact: round.htmlArtifact,
+        sameTopicProgress: round.sameTopicProgress,
+        difficultySignal: round.difficultySignal,
       },
     });
   } catch (error) {

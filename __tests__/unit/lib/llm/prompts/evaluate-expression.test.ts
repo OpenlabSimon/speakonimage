@@ -52,12 +52,33 @@ describe('ExpressionEvaluationSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an invalid CEFR estimate', () => {
-    const result = ExpressionEvaluationSchema.safeParse({
+  it('accepts level-only output and derives score', () => {
+    const result = ExpressionEvaluationSchema.parse({
+      ...fixture,
+      relevance: {
+        comment: fixture.relevance.comment,
+        level: 'developing',
+      },
+    });
+
+    expect(result.relevance.level).toBe('developing');
+    expect(result.relevance.score).toBe(62);
+  });
+
+  it('normalizes a noisy CEFR estimate', () => {
+    const result = ExpressionEvaluationSchema.parse({
+      ...fixture,
+      overallCefrEstimate: 'cefr b2',
+    });
+    expect(result.overallCefrEstimate).toBe('B2');
+  });
+
+  it('falls back to B1 for an invalid CEFR estimate', () => {
+    const result = ExpressionEvaluationSchema.parse({
       ...fixture,
       overallCefrEstimate: 'X9',
     });
-    expect(result.success).toBe(false);
+    expect(result.overallCefrEstimate).toBe('B1');
   });
 
   it('rejects data with wrong type literal', () => {
@@ -185,14 +206,20 @@ describe('buildExpressionEvaluationPrompt', () => {
   });
 
   it('includes history attempts when provided', () => {
-    const history = [{ text: 'attempt one', score: 60 }];
+    const history = [
+      { text: 'attempt one', score: 60 },
+      { text: 'attempt two with more detail', score: 72 },
+    ];
     const prompt = buildExpressionEvaluationPrompt(
       chinesePrompt, guidingQuestions, userResponse, suggestedVocab, grammarHints,
       history,
     );
-    expect(prompt).toContain('attempt one');
-    expect(prompt).toContain('60');
-    expect(prompt).toContain('历史尝试');
+    expect(prompt).toContain('历史摘要');
+    expect(prompt).toContain('count=2');
+    expect(prompt).toContain('attempt two with more detail');
+    expect(prompt).not.toContain('尝试 1');
+    expect(prompt).not.toContain('score=');
+    expect(prompt).not.toContain('得分');
   });
 
   it('omits history section when not provided', () => {
@@ -208,7 +235,7 @@ describe('buildExpressionEvaluationPrompt', () => {
       undefined, 'Intermediate learner focusing on creativity',
     );
     expect(prompt).toContain('Intermediate learner focusing on creativity');
-    expect(prompt).toContain('学生背景');
+    expect(prompt).toContain('画像参考');
   });
 
   it('mentions voice-specific label when inputMethod is voice', () => {
@@ -217,5 +244,14 @@ describe('buildExpressionEvaluationPrompt', () => {
       undefined, undefined, 'voice',
     );
     expect(prompt).toContain('语音转写');
+  });
+
+  it('asks for level instead of score', () => {
+    const prompt = buildExpressionEvaluationPrompt(
+      chinesePrompt, guidingQuestions, userResponse, suggestedVocab, grammarHints,
+    );
+    expect(prompt).toContain('level: 从 excellent / strong / solid / developing / limited 里选一个');
+    expect(prompt).toContain('不要返回任何数字分数');
+    expect(prompt).not.toContain('score: 0-100分');
   });
 });

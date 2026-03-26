@@ -20,13 +20,14 @@ export interface ReviewPreference {
 
 export interface AudioReview {
   enabled: boolean;
-  provider: 'elevenlabs';
+  provider: 'elevenlabs' | 'azure' | 'gemini';
   status: 'skipped' | 'pending' | 'generated' | 'failed';
+  requestToken?: string;
   voiceId?: string;
   text?: string;
   reason?: string;
   audioUrl?: string;
-  format?: 'mp3';
+  format?: 'mp3' | 'wav';
   error?: string;
 }
 

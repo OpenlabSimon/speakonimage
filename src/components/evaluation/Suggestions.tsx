@@ -11,7 +11,7 @@ interface SuggestionsProps {
 }
 
 export function Suggestions({ betterExpressions, suggestions }: SuggestionsProps) {
-  const { speak, isSpeaking, isLoading } = useTTS({ provider: 'elevenlabs' });
+  const { speak, isSpeaking, isLoading } = useTTS({ provider: 'azure' });
 
   const handleSpeak = (text: string) => {
     speak(text);

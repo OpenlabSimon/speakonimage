@@ -46,6 +46,23 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
     navigator.mediaDevices &&
     typeof MediaRecorder !== 'undefined';
 
+  const resolveMimeType = useCallback((): string | undefined => {
+    if (typeof MediaRecorder === 'undefined') {
+      return undefined;
+    }
+
+    const candidates = [
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/mp4',
+      'audio/aac',
+      'audio/ogg;codecs=opus',
+      'audio/webm;codecs=opus',
+      'audio/webm',
+    ];
+
+    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  }, []);
+
   const startRecording = useCallback(async () => {
     if (!isSupported) {
       setError('Recording is not supported in this browser');
@@ -68,19 +85,12 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
 
       streamRef.current = stream;
 
-      // Try different formats in order of Azure compatibility
-      // ogg/opus seems to work better with Azure than webm/opus
-      let mimeType = 'audio/webm';
-      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-        mimeType = 'audio/ogg;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        mimeType = 'audio/webm;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/webm';
-      }
-      console.log('Recording with mimeType:', mimeType);
+      const mimeType = resolveMimeType();
+      console.log('Recording with mimeType:', mimeType || 'browser-default');
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -151,7 +161,7 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
         setError('Failed to start recording');
       }
     }
-  }, [isSupported, maxDurationSeconds]);
+  }, [isSupported, maxDurationSeconds, resolveMimeType]);
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {

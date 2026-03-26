@@ -4,8 +4,9 @@ import { useState, useRef } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
 import { convertToWav } from '@/lib/audio/convert';
 import type { CEFRLevel } from '@/types';
+import type { AudioReview, ReviewPreference, TeacherSelection } from '@/domains/teachers/types';
 
-interface IntroductionAssessmentResult {
+export interface IntroductionAssessmentResult {
   estimatedLevel: CEFRLevel;
   confidence: number;
   analysis: {
@@ -14,15 +15,23 @@ interface IntroductionAssessmentResult {
     englishRatio: number;
     observations: string[];
   };
+  reviewText?: string;
+  speechScript?: string;
+  teacher?: TeacherSelection;
+  review?: ReviewPreference;
+  audioReview?: AudioReview;
 }
 
 interface IntroductionInputProps {
   onAssessmentComplete: (
     level: CEFRLevel,
     confidence: number,
-    introductionText: string
+    introductionText: string,
+    result: IntroductionAssessmentResult
   ) => void;
   onSkip?: () => void;
+  teacher: TeacherSelection;
+  review: ReviewPreference;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -34,6 +43,8 @@ const EXAMPLE_PROMPTS = [
 export function IntroductionInput({
   onAssessmentComplete,
   onSkip,
+  teacher,
+  review,
 }: IntroductionInputProps) {
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('text');
   const [textInput, setTextInput] = useState('');
@@ -143,7 +154,11 @@ export function IntroductionInput({
       const response = await fetch('/api/assess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ introductionText: text }),
+        body: JSON.stringify({
+          introductionText: text,
+          teacher,
+          review,
+        }),
       });
 
       const result = await response.json();
@@ -158,7 +173,8 @@ export function IntroductionInput({
       onAssessmentComplete(
         result.data.estimatedLevel,
         result.data.confidence,
-        text
+        text,
+        result.data
       );
     } catch (err) {
       console.error('Assessment error:', err);
@@ -178,7 +194,7 @@ export function IntroductionInput({
   const displayError = error || recorderError;
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6">
+    <div className="rounded-2xl bg-white p-5 shadow-lg sm:p-6">
       <div className="text-center mb-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-2">
           自我介绍
@@ -189,10 +205,10 @@ export function IntroductionInput({
       </div>
 
       {/* Input Mode Toggle */}
-      <div className="flex gap-2 mb-4">
+      <div className="mb-4 flex gap-2">
         <button
           onClick={() => setInputMode('text')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+          className={`min-h-11 flex-1 rounded-lg py-2 font-medium transition-colors ${
             inputMode === 'text'
               ? 'bg-blue-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -202,7 +218,7 @@ export function IntroductionInput({
         </button>
         <button
           onClick={() => setInputMode('voice')}
-          className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+          className={`min-h-11 flex-1 rounded-lg py-2 font-medium transition-colors ${
             inputMode === 'voice'
               ? 'bg-blue-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -231,7 +247,7 @@ export function IntroductionInput({
                 <button
                   key={idx}
                   onClick={() => handleUseExample(example)}
-                  className="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors"
+                  className="min-h-11 rounded-full bg-gray-100 px-3 py-1.5 text-left text-xs text-gray-600 transition-colors hover:bg-gray-200"
                 >
                   {example.substring(0, 30)}...
                 </button>
@@ -242,7 +258,7 @@ export function IntroductionInput({
           <button
             onClick={handleTextSubmit}
             disabled={isAssessing || !textInput.trim()}
-            className={`w-full py-3 rounded-xl font-semibold transition-all ${
+            className={`w-full min-h-12 rounded-xl py-3 font-semibold transition-all ${
               isAssessing || !textInput.trim()
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
@@ -270,12 +286,12 @@ export function IntroductionInput({
           ) : (
             <>
               {/* Recording Controls */}
-              <div className="flex items-center justify-center gap-4">
+              <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
                 <button
                   onClick={handleToggleRecording}
                   disabled={isAssessing}
                   className={`
-                    w-20 h-20 rounded-full flex items-center justify-center
+                    flex h-24 w-24 items-center justify-center rounded-full
                     transition-all duration-200 text-white font-medium shadow-lg
                     ${
                       isRecording
@@ -295,7 +311,7 @@ export function IntroductionInput({
                 </button>
 
                 {isRecording && (
-                  <div className="text-xl font-mono text-red-600 min-w-[60px]">
+                  <div className="min-w-[72px] text-center font-mono text-xl text-red-600">
                     {formatDuration(duration)}
                   </div>
                 )}
@@ -370,7 +386,7 @@ export function IntroductionInput({
         <div className="mt-6 text-center">
           <button
             onClick={onSkip}
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
+            className="min-h-11 rounded-lg px-3 text-sm text-gray-500 underline hover:text-gray-700"
           >
             跳过，手动选择等级
           </button>

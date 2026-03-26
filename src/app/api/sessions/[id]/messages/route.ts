@@ -15,6 +15,7 @@ const AddMessageSchema = z.object({
   content: z.string().min(1),
   contentType: z.enum(['text', 'evaluation']).optional().default('text'),
   metadata: z.object({
+    source: z.enum(['full_review', 'live_coach', 'system']).optional(),
     inputMethod: z.enum(['voice', 'text']).optional(),
     audioUrl: z.string().optional(),
     transcriptionConfidence: z.number().optional(),

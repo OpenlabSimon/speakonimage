@@ -1,8 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import type {
+  InterestSignal,
+  GoalSignal,
+  EntitySignal,
+  VocabularyMemory,
+  MemorySnippet,
+  CoachMemoryProfile,
+  RecommendationProfile,
+  RecommendationFeedbackEntry,
+} from '@/lib/profile/memory';
 
-const PROFILE_CACHE_KEY = 'speakonimage:profile-cache';
+const PROFILE_CACHE_KEY_PREFIX = 'speakonimage:profile-cache:';
 
 interface GrammarErrorSummary {
   pattern: string;
@@ -25,11 +35,32 @@ interface ProfileData {
     grammarProfile: {
       topErrors: GrammarErrorSummary[];
     };
+    usageProfile: {
+      snapshots: Array<{
+        key: 'latest_attempt' | 'rolling_30m' | 'daily';
+        label: string;
+        sampleCount: number;
+        strengths: string[];
+        weaknesses: string[];
+        preferredVocabulary: string[];
+        avoidVocabulary: string[];
+        preferredExpressions: string[];
+        avoidGrammarPatterns: string[];
+        updatedAt: string;
+      }>;
+    };
+    interests: InterestSignal[];
+    goals: GoalSignal[];
+    entities: EntitySignal[];
+    recentVocabulary: VocabularyMemory[];
+    memorySnippets: MemorySnippet[];
+    coachMemory: CoachMemoryProfile;
+    recommendations: RecommendationProfile;
+    recommendationFeedback: RecommendationFeedbackEntry[];
   };
   stats: {
     topicCount: number;
     submissionCount: number;
-    avgScore: number;
     streak: number;
     vocabSize: number;
     activeDays: number;
@@ -37,10 +68,11 @@ interface ProfileData {
   recentSubmissions: {
     id: string;
     transcribedText: string;
+    rawAudioUrl?: string | null;
     evaluation: Record<string, unknown>;
     difficultyAssessment: { overallScore?: number } | null;
     createdAt: string;
-    topic: { type: string; originalInput: string } | null;
+    topic: { id?: string; type: string; originalInput: string } | null;
   }[];
   recentTopics: {
     id: string;
@@ -54,17 +86,23 @@ interface ProfileData {
   recentCoachFeedback: {
     id: string;
     content: string;
+    speechScript: string;
+    audioUrl: string | null;
     createdAt: string;
     source: 'coach_review' | 'evaluation_summary';
     topic: { id?: string; type: string; originalInput: string } | null;
   }[];
 }
 
-function readCachedProfile(): ProfileData | null {
+function getProfileCacheKey(scope: string): string {
+  return `${PROFILE_CACHE_KEY_PREFIX}${scope}`;
+}
+
+function readCachedProfile(scope: string): ProfileData | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.sessionStorage.getItem(PROFILE_CACHE_KEY);
+    const raw = window.sessionStorage.getItem(getProfileCacheKey(scope));
     if (!raw) return null;
     return JSON.parse(raw) as ProfileData;
   } catch {
@@ -72,19 +110,19 @@ function readCachedProfile(): ProfileData | null {
   }
 }
 
-function writeCachedProfile(data: ProfileData) {
+function writeCachedProfile(scope: string, data: ProfileData) {
   if (typeof window === 'undefined') return;
 
   try {
-    window.sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(data));
+    window.sessionStorage.setItem(getProfileCacheKey(scope), JSON.stringify(data));
   } catch {
     // Ignore cache write failures.
   }
 }
 
-export function useProfile(enabled = true) {
+export function useProfile(enabled = true, cacheScope = 'local') {
   const [data, setData] = useState<ProfileData | null>(null);
-  const [loading, setLoading] = useState(() => !readCachedProfile());
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProfile = useCallback(async (options?: { background?: boolean }) => {
@@ -102,16 +140,18 @@ export function useProfile(enabled = true) {
         throw new Error(json.error || 'Failed to load profile');
       }
       setData(json.data);
-      writeCachedProfile(json.data as ProfileData);
+      writeCachedProfile(cacheScope, json.data as ProfileData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
+      if (!background || !data) {
+        setError(err instanceof Error ? err.message : 'Failed to load profile');
+      }
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [cacheScope, data, enabled]);
 
   useEffect(() => {
-    const cached = readCachedProfile();
+    const cached = readCachedProfile(cacheScope);
     if (cached) {
       setData(cached);
       setLoading(false);
@@ -119,8 +159,11 @@ export function useProfile(enabled = true) {
 
     if (enabled) {
       void fetchProfile({ background: !!cached });
+    } else {
+      setData(null);
+      setLoading(false);
     }
-  }, [enabled, fetchProfile]);
+  }, [cacheScope, enabled, fetchProfile]);
 
   return { data, loading, error, refetch: fetchProfile };
 }

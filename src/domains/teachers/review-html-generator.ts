@@ -6,7 +6,6 @@ interface BuildHtmlArtifactInput {
   teacher: TeacherSelection;
   review: ReviewPreference;
   evaluation: EvaluationOutput;
-  overallScore: number;
   reviewText: string;
   userResponse: string;
   skillDomain: SkillDomain;
@@ -38,21 +37,38 @@ function splitReview(reviewText: string): string[] {
     .slice(0, 4);
 }
 
+function describeLevel(level: string): string {
+  switch (level) {
+    case 'excellent':
+      return '非常稳';
+    case 'strong':
+      return '很强';
+    case 'solid':
+      return '比较稳';
+    case 'developing':
+      return '在起势';
+    case 'limited':
+      return '还需要带练';
+    default:
+      return '比较稳';
+  }
+}
+
 function buildHighlights(evaluation: EvaluationOutput, skillDomain: SkillDomain): string[] {
   if (evaluation.type === 'translation') {
     return [
-      `语义准确度 ${evaluation.semanticAccuracy.score}`,
-      `表达自然度 ${evaluation.naturalness.score}`,
-      `语法控制 ${evaluation.grammar.score}`,
-      `词汇表现 ${evaluation.vocabulary.score}`,
+      `语义准确度：${describeLevel(evaluation.semanticAccuracy.level)}`,
+      `表达自然度：${describeLevel(evaluation.naturalness.level)}`,
+      `语法控制：${describeLevel(evaluation.grammar.level)}`,
+      `词汇表现：${describeLevel(evaluation.vocabulary.level)}`,
     ];
   }
 
   const lines = [
-    `相关性 ${evaluation.relevance.score}`,
-    `展开深度 ${evaluation.depth.score}`,
-    `表达创意 ${evaluation.creativity.score}`,
-    `语言质量 ${evaluation.languageQuality.score}`,
+    `相关性：${describeLevel(evaluation.relevance.level)}`,
+    `展开深度：${describeLevel(evaluation.depth.level)}`,
+    `表达创意：${describeLevel(evaluation.creativity.level)}`,
+    `语言质量：${describeLevel(evaluation.languageQuality.level)}`,
   ];
 
   if (skillDomain === 'spoken_expression') {
@@ -144,17 +160,6 @@ export function buildHtmlArtifact(input: BuildHtmlArtifactInput): HtmlArtifact {
       padding: 28px;
       margin-bottom: 20px;
     }
-    .score {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: var(--surface);
-      color: var(--accent);
-      font-weight: 700;
-      margin-top: 12px;
-    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -197,7 +202,6 @@ export function buildHtmlArtifact(input: BuildHtmlArtifactInput): HtmlArtifact {
       <div class="mini">English Coach Lesson Artifact</div>
       <h1>本轮老师复盘</h1>
       <p class="mini">老师风格：${escapeHtml(input.teacher.soulId)} ｜ 能力域：${escapeHtml(input.skillDomain)}</p>
-      <div class="score">总分 ${input.overallScore}/100</div>
     </section>
 
     <div class="grid">

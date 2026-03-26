@@ -36,6 +36,11 @@ const translationTopicContent = {
   suggestedVocab: [
     { word: 'run into', phonetic: '/rʌn/', partOfSpeech: 'phrasal verb', chinese: '偶遇', exampleContext: 'I ran into a friend.' },
   ],
+  difficultyMetadata: {
+    targetCefr: 'B1',
+    vocabComplexity: 2,
+    grammarComplexity: 2,
+  },
 };
 
 function makeRequest(body: object): NextRequest {
@@ -52,8 +57,17 @@ describe('POST /api/coach/round', () => {
     resetAuthMock();
     resetLLMMock();
     mockFetch.mockReset();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(24)),
+    });
     delete process.env.ELEVENLABS_API_KEY;
     delete process.env.BLOB_READ_WRITE_TOKEN;
+    delete process.env.GEMINI_TTS_API_KEY;
+    delete process.env.GEMINI_TTS_MODEL;
+    delete process.env.COACH_REVIEW_TTS_PROVIDER;
+    process.env.AZURE_SPEECH_KEY = 'azure-test-key';
+    process.env.AZURE_SPEECH_REGION = 'westus3';
   });
 
   it('returns practiceMode and skillDomain for translation text rounds', async () => {
@@ -65,6 +79,12 @@ describe('POST /api/coach/round', () => {
       topicContent: translationTopicContent,
       userResponse: 'I met my friend at the coffee shop yesterday.',
       inputMethod: 'text',
+      historyAttempts: [
+        {
+          text: 'I meet a friend in coffee shop yesterday.',
+          score: 72,
+        },
+      ],
     }));
     const data = await response.json();
 
@@ -75,19 +95,30 @@ describe('POST /api/coach/round', () => {
     expect(data.data.teacher).toEqual({ soulId: 'default' });
     expect(data.data.review).toEqual({ mode: 'all', autoPlayAudio: true });
     expect(typeof data.data.reviewText).toBe('string');
+    expect(typeof data.data.speechScript).toBe('string');
     expect(typeof data.data.ttsText).toBe('string');
     expect(data.data.reviewText.length).toBeGreaterThan(20);
+    expect(data.data.speechScript.length).toBeGreaterThan(20);
     expect(data.data.ttsText.length).toBeGreaterThan(20);
-    expect(data.data.audioReview).toEqual({
-      enabled: true,
-      provider: 'elevenlabs',
-      status: 'failed',
-      voiceId: 'EXAVITQu4vr4xnSDxMaL',
-      text: data.data.ttsText,
-      error: 'ELEVENLABS_API_KEY not configured',
-    });
+    expect(data.data.reviewText).not.toContain('得分');
+    expect(data.data.speechScript).not.toContain('这次得分是');
+    expect(data.data.speechScript).toBe(data.data.ttsText);
+    expect(data.data.audioReview.enabled).toBe(true);
+    expect(data.data.audioReview.provider).toBe('azure');
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.voiceId).toBe('en-US-AvaMultilingualNeural');
+    expect(data.data.audioReview.text).toBe(data.data.speechScript);
     expect(data.data.htmlArtifact.enabled).toBe(true);
     expect(data.data.htmlArtifact.status).toBe('generated');
+    expect(data.data.sameTopicProgress).toMatchObject({
+      attemptCount: 2,
+      deltaFromLast: data.data.overallScore - 72,
+    });
+    expect(data.data.difficultySignal).toEqual({
+      targetCefr: 'B1',
+      baselineCefr: 'B1',
+      relation: 'matched',
+    });
     expect(data.data.submissionId).toBeUndefined();
   });
 
@@ -95,7 +126,33 @@ describe('POST /api/coach/round', () => {
     setAuthenticated({ id: 'user-1', email: 'a@b.com' });
     mockLLMProvider.generateJSON.mockResolvedValue(expressionEval);
     prismaMock.topic.findUnique.mockResolvedValue({ id: 'topic-1', accountId: 'user-1' });
-    prismaMock.speaker.findFirst.mockResolvedValue({ id: 'speaker-1' });
+    prismaMock.speaker.findFirst.mockResolvedValue({
+      id: 'speaker-1',
+      languageProfile: {
+        coachMemory: {
+          longTermReminders: [
+            {
+              id: 'long-1',
+              scope: 'long_term',
+              text: '持续注意冠词 a/an 的使用。',
+              source: 'goal',
+              createdAt: new Date().toISOString(),
+              relatedPatterns: ['articles'],
+            },
+          ],
+          currentRoundReminders: [
+            {
+              id: 'round-1',
+              scope: 'current_round',
+              text: '这轮最关键的是把过去时说稳。',
+              source: 'coach_review',
+              createdAt: new Date().toISOString(),
+              relatedPatterns: ['past-tense'],
+            },
+          ],
+        },
+      },
+    });
     prismaMock.submission.count.mockResolvedValue(0);
     prismaMock.submission.create.mockResolvedValue({ id: 'sub-1' });
     prismaMock.grammarError.createMany.mockResolvedValue({ count: 0 });
@@ -124,17 +181,21 @@ describe('POST /api/coach/round', () => {
     expect(data.data.sessionId).toBe('session-1');
     expect(data.data.practiceMode).toBe('expression_voice');
     expect(data.data.skillDomain).toBe('spoken_expression');
-    expect(data.data.reviewText).toContain('口语');
-    expect(data.data.ttsText).toContain('口语');
+    expect(data.data.reviewText).toContain('先复盘长期提醒');
+    expect(data.data.reviewText).toContain('回到这一轮');
+    expect(data.data.reviewText).toContain('现在最值得马上再练一次的是');
+    expect(data.data.speechScript).not.toContain('这次得分是');
+    expect(data.data.speechScript).toContain('持续注意冠词 a/an 的使用');
+    expect(data.data.speechScript).toContain('下一次你先这样练');
     expect(data.data.review).toEqual({ mode: 'all', autoPlayAudio: true });
-    expect(data.data.audioReview.status).toBe('failed');
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.provider).toBe('azure');
     expect(data.data.htmlArtifact.status).toBe('generated');
   });
 
   it('accepts explicit teacher soul and review mode preferences', async () => {
     setUnauthenticated();
     mockLLMProvider.generateJSON.mockResolvedValue(translationEval);
-    process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
     mockFetch.mockResolvedValue({
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(24)),
@@ -167,19 +228,97 @@ describe('POST /api/coach/round', () => {
       autoPlayAudio: true,
     });
     expect(data.data.reviewText).toContain('槽点');
-    expect(data.data.ttsText).toContain('槽点');
+    expect(data.data.speechScript).toContain('槽点');
     expect(data.data.audioReview.enabled).toBe(true);
-    expect(data.data.audioReview.provider).toBe('elevenlabs');
-    expect(data.data.audioReview.status).toBe('generated');
+    expect(data.data.audioReview.provider).toBe('azure');
+    expect(data.data.audioReview.status).toBe('pending');
     expect(data.data.audioReview.voiceId).toBe('elevenlabs-voice-1');
-    expect(data.data.audioReview.text).toBe(data.data.ttsText);
-    expect(data.data.audioReview.audioUrl).toContain('data:audio/mpeg;base64,');
-    expect(data.data.audioReview.format).toBe('mp3');
+    expect(data.data.audioReview.text).toBe(data.data.speechScript);
+    expect(data.data.audioReview.audioUrl).toBeUndefined();
+    expect(data.data.audioReview.format).toBeUndefined();
     expect(data.data.htmlArtifact.enabled).toBe(true);
     expect(data.data.htmlArtifact.status).toBe('generated');
     expect(data.data.htmlArtifact.title).toContain('Coach Review');
     expect(data.data.htmlArtifact.html).toContain('<!DOCTYPE html>');
     expect(data.data.htmlArtifact.html).toContain('本轮老师复盘');
+  });
+
+  it('still returns pending Azure audio when ElevenLabs credentials exist', async () => {
+    setUnauthenticated();
+    mockLLMProvider.generateJSON.mockResolvedValue(translationEval);
+    process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
+    mockFetch.mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(24)),
+    });
+
+    const response = await POST(makeRequest({
+      topicType: 'translation',
+      topicContent: translationTopicContent,
+      userResponse: 'I met my friend at the coffee shop yesterday.',
+      inputMethod: 'text',
+      review: {
+        mode: 'all',
+        autoPlayAudio: true,
+      },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.provider).toBe('azure');
+    expect(data.data.audioReview.audioUrl).toBeUndefined();
+  });
+
+  it('returns pending Gemini audio metadata when configured', async () => {
+    setUnauthenticated();
+    mockLLMProvider.generateJSON.mockResolvedValue(translationEval);
+    process.env.GEMINI_TTS_API_KEY = 'google-test-key';
+    process.env.GEMINI_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
+    process.env.COACH_REVIEW_TTS_PROVIDER = 'gemini';
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'audio/L16;codec=pcm;rate=24000',
+                    data: Buffer.from(new Uint8Array(32)).toString('base64'),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const response = await POST(makeRequest({
+      topicType: 'translation',
+      topicContent: translationTopicContent,
+      userResponse: 'I met my friend at the coffee shop yesterday.',
+      inputMethod: 'text',
+      teacher: {
+        soulId: 'energetic',
+      },
+      review: {
+        mode: 'audio',
+        autoPlayAudio: false,
+      },
+    }));
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.data.audioReview.provider).toBe('gemini');
+    expect(data.data.audioReview.voiceId).toBe('Fenrir');
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.audioUrl).toBeUndefined();
+    expect(data.data.audioReview.format).toBeUndefined();
   });
 
   it('generates html artifact for html-only review mode without audio', async () => {
