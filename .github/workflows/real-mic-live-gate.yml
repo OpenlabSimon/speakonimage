@@ -93,40 +93,40 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ -f /tmp/speakonimage-real-mic-runs/report.json ]; then
-          node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
-const fs = require('node:fs');
-const report = JSON.parse(
-  fs.readFileSync('/tmp/speakonimage-real-mic-runs/report.json', 'utf8')
-);
+            node <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+            const fs = require('node:fs');
+            const report = JSON.parse(
+              fs.readFileSync('/tmp/speakonimage-real-mic-runs/report.json', 'utf8')
+            );
 
-console.log('| Metric | Value |');
-console.log('| --- | --- |');
-console.log(`| Runs | ${report.runs} |`);
-console.log(`| Completed Rounds | ${report.completedRounds} |`);
-console.log(`| Max Delta Ms | ${report.maxDeltaMs} |`);
-console.log(`| All Ordered | ${report.allOrdered} |`);
-console.log(`| All Aligned | ${report.allAligned} |`);
-console.log('');
-console.log('| Round | Capture | Fallback | Delta Ms | Sample Rate |');
-console.log('| --- | --- | --- | --- | --- |');
-for (const round of report.rounds) {
-  console.log(
-    `| ${round.roundId} | ${round.captureStatus} | ${round.fallbackActive} | ${round.deltaMs} | ${round.trackSampleRate} |`
-  );
-}
-console.log('');
+            console.log('| Metric | Value |');
+            console.log('| --- | --- |');
+            console.log(`| Runs | ${report.runs} |`);
+            console.log(`| Completed Rounds | ${report.completedRounds} |`);
+            console.log(`| Max Delta Ms | ${report.maxDeltaMs} |`);
+            console.log(`| All Ordered | ${report.allOrdered} |`);
+            console.log(`| All Aligned | ${report.allAligned} |`);
+            console.log('');
+            console.log('| Round | Capture | Fallback | Delta Ms | Sample Rate |');
+            console.log('| --- | --- | --- | --- | --- |');
+            for (const round of report.rounds) {
+              console.log(
+                `| ${round.roundId} | ${round.captureStatus} | ${round.fallbackActive} | ${round.deltaMs} | ${round.trackSampleRate} |`
+              );
+            }
+            console.log('');
 
-const failedRounds = report.rounds.filter((round) => round.captureStatus !== 'complete' || round.fallbackActive);
-if (failedRounds.length > 0 || !report.allOrdered || !report.allAligned) {
-  console.log('### Where To Look');
-  console.log('');
-  console.log('- `/tmp/speakonimage-real-mic-runs/report.json` for the gate verdict');
-  console.log('- `/tmp/speakonimage-real-mic-runs/dev-server.log` for local server startup and token route issues');
-  for (const round of report.rounds) {
-    console.log(`- \`${round.logPath}\` for browser, console, and WebSocket details of ${round.roundId}`);
-  }
-}
-NODE
+            const failedRounds = report.rounds.filter((round) => round.captureStatus !== 'complete' || round.fallbackActive);
+            if (failedRounds.length > 0 || !report.allOrdered || !report.allAligned) {
+              console.log('### Where To Look');
+              console.log('');
+              console.log('- `/tmp/speakonimage-real-mic-runs/report.json` for the gate verdict');
+              console.log('- `/tmp/speakonimage-real-mic-runs/dev-server.log` for local server startup and token route issues');
+              for (const round of report.rounds) {
+                console.log(`- \`${round.logPath}\` for browser, console, and WebSocket details of ${round.roundId}`);
+              }
+            }
+            NODE
           else
             echo "### Missing Report" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
