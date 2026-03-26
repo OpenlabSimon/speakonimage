@@ -111,6 +111,11 @@ function HomePageContent() {
   const [manualLevel, setManualLevel] = useState<CEFRLevel>('B1');
   const [dueCount, setDueCount] = useState(0);
   const [isTopicTranscribing, setIsTopicTranscribing] = useState(false);
+  const [topicTranscriptionAvailability, setTopicTranscriptionAvailability] = useState<{
+    available: boolean;
+    provider: 'azure' | null;
+    reason: string | null;
+  } | null>(null);
   const [assessmentSummary, setAssessmentSummary] = useState<IntroductionAssessmentResult | null>(null);
   const [resumeTopic, setResumeTopic] = useState<ReturnType<typeof loadCurrentTopicSummary>>(null);
   const hasResolvedInitialStep = useRef(false);
@@ -169,6 +174,35 @@ function HomePageContent() {
 
     setResumeTopic(loadCurrentTopicSummary());
   }, [isLoaded]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTopicTranscriptionAvailability = async () => {
+      try {
+        const response = await fetch('/api/speech/transcribe', { cache: 'no-store' });
+        const result = await response.json();
+
+        if (cancelled || !result?.success || !result?.data) {
+          return;
+        }
+
+        setTopicTranscriptionAvailability({
+          available: Boolean(result.data.available),
+          provider: result.data.provider ?? null,
+          reason: result.data.reason ?? null,
+        });
+      } catch {
+        // Keep the control usable if the capability probe itself fails.
+      }
+    };
+
+    void loadTopicTranscriptionAvailability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch review stats for badge
   useEffect(() => {
@@ -403,7 +437,7 @@ function HomePageContent() {
       const result = await response.json();
 
       if (!result.success || !result.data) {
-        throw new Error(result.error || '语音转写失败');
+        throw new Error(result.error || '语音转写暂时不可用，请直接输入文字，或进入 Live 对话。');
       }
 
       if (result.data.status !== 'success' || !result.data.text?.trim()) {
@@ -428,6 +462,11 @@ function HomePageContent() {
       return;
     }
 
+    if (topicTranscriptionAvailability?.available === false) {
+      setError(topicTranscriptionAvailability.reason || '语音转写暂时不可用，请直接输入文字。');
+      return;
+    }
+
     if (isTopicRecording) {
       const blob = await stopTopicRecording();
       if (blob) {
@@ -440,6 +479,10 @@ function HomePageContent() {
     setError(null);
     await startTopicRecording();
   };
+
+  const isTopicVoiceUnavailable = topicTranscriptionAvailability?.available === false;
+  const isTopicVoiceButtonDisabled =
+    !isTopicRecordingSupported || isGenerating || isTopicTranscribing || isTopicVoiceUnavailable;
 
   // Show loading state while checking level history
   if (!isLoaded) {
@@ -465,6 +508,10 @@ function HomePageContent() {
   }
 
   if (!isClassicView) {
+    const isTopicVoiceUnavailable = topicTranscriptionAvailability?.available === false;
+    const isTopicVoiceButtonDisabled =
+      !isTopicRecordingSupported || isGenerating || isTopicTranscribing || isTopicVoiceUnavailable;
+
     return (
       <AppShell
         activeNav="chat"
@@ -541,9 +588,9 @@ function HomePageContent() {
                   </div>
                   <button
                     onClick={handleTopicRecordingToggle}
-                    disabled={!isTopicRecordingSupported || isGenerating || isTopicTranscribing}
+                    disabled={isTopicVoiceButtonDisabled}
                     className={`min-h-11 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                      !isTopicRecordingSupported || isGenerating || isTopicTranscribing
+                      isTopicVoiceButtonDisabled
                         ? 'cursor-not-allowed bg-slate-200 text-slate-400'
                         : isTopicRecording
                           ? 'bg-rose-500 text-white hover:bg-rose-600'
@@ -562,6 +609,11 @@ function HomePageContent() {
                     {topicRecorderError && <span className="text-rose-600">{topicRecorderError}</span>}
                     {!topicRecorderError && isTopicRecording && '录音中，停止后会自动转写进输入框。'}
                     {!topicRecorderError && !isTopicRecording && isTopicTranscribing && '正在把语音转成文字...'}
+                  </div>
+                )}
+                {!topicRecorderError && !isTopicRecording && !isTopicTranscribing && isTopicVoiceUnavailable && (
+                  <div className="mt-3 text-xs text-amber-700">
+                    {topicTranscriptionAvailability?.reason}
                   </div>
                 )}
               </div>
@@ -879,9 +931,9 @@ function HomePageContent() {
                   </div>
                   <button
                     onClick={handleTopicRecordingToggle}
-                    disabled={!isTopicRecordingSupported || isGenerating || isTopicTranscribing}
+                    disabled={isTopicVoiceButtonDisabled}
                     className={`min-h-11 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                      !isTopicRecordingSupported || isGenerating || isTopicTranscribing
+                      isTopicVoiceButtonDisabled
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         : isTopicRecording
                         ? 'bg-red-500 text-white hover:bg-red-600'
@@ -900,6 +952,11 @@ function HomePageContent() {
                     {topicRecorderError && <span className="text-red-600">{topicRecorderError}</span>}
                     {!topicRecorderError && isTopicRecording && '录音中，点击右侧按钮结束并转写'}
                     {!topicRecorderError && !isTopicRecording && isTopicTranscribing && '正在把语音转成文字...'}
+                  </div>
+                )}
+                {!topicRecorderError && !isTopicRecording && !isTopicTranscribing && isTopicVoiceUnavailable && (
+                  <div className="mt-2 text-xs text-amber-700">
+                    {topicTranscriptionAvailability?.reason}
                   </div>
                 )}
               </div>

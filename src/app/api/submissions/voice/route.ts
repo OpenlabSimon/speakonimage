@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { checkAuth, unauthorizedResponse } from '@/lib/auth';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
+import { getSpeechTranscriptionAvailability } from '@/lib/speech/transcription-config';
 import { runCoachingRound } from '@/domains/runtime/round-orchestrator';
 import type { ApiResponse } from '@/types';
 
@@ -123,14 +124,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get Azure credentials
-    const speechKey = process.env.AZURE_SPEECH_KEY;
-    const speechRegion = process.env.AZURE_SPEECH_REGION;
-
-    if (!speechKey || !speechRegion) {
+    const availability = getSpeechTranscriptionAvailability();
+    if (!availability.available || !availability.speechKey || !availability.speechRegion) {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: 'Azure Speech credentials not configured' },
-        { status: 500 }
+        { success: false, error: availability.reason || '语音转写不可用' },
+        { status: 503 }
       );
     }
 
@@ -159,8 +157,8 @@ export async function POST(request: NextRequest) {
     const audioBlob = new Blob([arrayBuffer], { type: audioFile.type });
 
     const transcriptionResult = await transcribeAudio(audioBlob, {
-      speechKey,
-      speechRegion,
+      speechKey: availability.speechKey,
+      speechRegion: availability.speechRegion,
       language: 'en-US',
     });
 
