@@ -15,6 +15,7 @@ import type {
 import { compressContext, estimateTokens } from './ContextCompressor';
 import { extractSessionLearningData } from './SessionExtractor';
 import { computeAndUpdateProfile } from '@/lib/profile/ProfileManager';
+import { mergeSessionSignalsIntoProfile } from '@/lib/profile/memory';
 
 // Default context building options
 const DEFAULT_CONTEXT_OPTIONS: Required<ContextBuildOptions> = {
@@ -23,6 +24,42 @@ const DEFAULT_CONTEXT_OPTIONS: Required<ContextBuildOptions> = {
   includeSystemMessages: false,
   compressionThreshold: 20,
 };
+
+function toChatSession(session: {
+  id: string;
+  accountId: string;
+  speakerId: string | null;
+  topicId: string | null;
+  sessionType: string;
+  status: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  contextSummary?: unknown;
+  messageCount: number;
+  extractedData?: unknown;
+  topic?: { id: string; type: string; originalInput: string } | null;
+}): ChatSession {
+  return {
+    id: session.id,
+    accountId: session.accountId,
+    speakerId: session.speakerId || undefined,
+    topicId: session.topicId || undefined,
+    sessionType: session.sessionType as 'practice' | 'review',
+    status: session.status as SessionStatus,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt || undefined,
+    contextSummary: session.contextSummary as ChatSession['contextSummary'],
+    messageCount: session.messageCount,
+    extractedData: session.extractedData as ChatSession['extractedData'],
+    topicSummary: session.topic
+      ? {
+          id: session.topic.id,
+          type: session.topic.type,
+          originalInput: session.topic.originalInput,
+        }
+      : undefined,
+  };
+}
 
 /**
  * Create a new chat session
@@ -39,17 +76,7 @@ export async function createSession(input: CreateSessionInput): Promise<ChatSess
     },
   });
 
-  return {
-    id: session.id,
-    accountId: session.accountId,
-    speakerId: session.speakerId || undefined,
-    topicId: session.topicId || undefined,
-    sessionType: session.sessionType as 'practice' | 'review',
-    status: session.status as SessionStatus,
-    startedAt: session.startedAt,
-    endedAt: session.endedAt || undefined,
-    messageCount: session.messageCount,
-  };
+  return toChatSession(session);
 }
 
 /**
@@ -58,23 +85,20 @@ export async function createSession(input: CreateSessionInput): Promise<ChatSess
 export async function getSession(sessionId: string): Promise<ChatSession | null> {
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
+    include: {
+      topic: {
+        select: {
+          id: true,
+          type: true,
+          originalInput: true,
+        },
+      },
+    },
   });
 
   if (!session) return null;
 
-  return {
-    id: session.id,
-    accountId: session.accountId,
-    speakerId: session.speakerId || undefined,
-    topicId: session.topicId || undefined,
-    sessionType: session.sessionType as 'practice' | 'review',
-    status: session.status as SessionStatus,
-    startedAt: session.startedAt,
-    endedAt: session.endedAt || undefined,
-    contextSummary: session.contextSummary as unknown as ChatSession['contextSummary'],
-    messageCount: session.messageCount,
-    extractedData: session.extractedData as unknown as ChatSession['extractedData'],
-  };
+  return toChatSession(session);
 }
 
 /**
@@ -97,23 +121,20 @@ export async function getActiveSession(accountId: string, topicId?: string): Pro
   const session = await prisma.chatSession.findFirst({
     where,
     orderBy: { startedAt: 'desc' },
+    include: {
+      topic: {
+        select: {
+          id: true,
+          type: true,
+          originalInput: true,
+        },
+      },
+    },
   });
 
   if (!session) return null;
 
-  return {
-    id: session.id,
-    accountId: session.accountId,
-    speakerId: session.speakerId || undefined,
-    topicId: session.topicId || undefined,
-    sessionType: session.sessionType as 'practice' | 'review',
-    status: session.status as SessionStatus,
-    startedAt: session.startedAt,
-    endedAt: session.endedAt || undefined,
-    contextSummary: session.contextSummary as unknown as ChatSession['contextSummary'],
-    messageCount: session.messageCount,
-    extractedData: session.extractedData as unknown as ChatSession['extractedData'],
-  };
+  return toChatSession(session);
 }
 
 /**
@@ -294,6 +315,34 @@ export async function endSession(
     const messages = await getMessages(sessionId);
     extractedData = await extractSessionLearningData(messages, session);
 
+    if (session.speakerId) {
+      const [speaker, topic] = await Promise.all([
+        prisma.speaker.findUnique({
+          where: { id: session.speakerId },
+          select: { languageProfile: true },
+        }),
+        session.topicId
+          ? prisma.topic.findUnique({
+              where: { id: session.topicId },
+              select: { originalInput: true },
+            })
+          : Promise.resolve(null),
+      ]);
+
+      await prisma.speaker.update({
+        where: { id: session.speakerId },
+        data: {
+          languageProfile: mergeSessionSignalsIntoProfile({
+            existingProfile: speaker?.languageProfile,
+            extraction: extractedData,
+            messages,
+            topicInput: topic?.originalInput,
+          }) as object,
+          lastActiveAt: new Date(),
+        },
+      });
+    }
+
     // Update speaker profile via ProfileManager (DB aggregation, no LLM)
     if (opts.updateProfile && session.speakerId) {
       await computeAndUpdateProfile(session.speakerId);
@@ -310,19 +359,12 @@ export async function endSession(
     },
   });
 
-  return {
-    id: updated.id,
-    accountId: updated.accountId,
-    speakerId: updated.speakerId || undefined,
-    topicId: updated.topicId || undefined,
-    sessionType: updated.sessionType as 'practice' | 'review',
-    status: updated.status as SessionStatus,
-    startedAt: updated.startedAt,
-    endedAt: updated.endedAt || undefined,
-    contextSummary: updated.contextSummary as unknown as ChatSession['contextSummary'],
-    messageCount: updated.messageCount,
-    extractedData: updated.extractedData as unknown as ChatSession['extractedData'],
-  };
+  const refreshed = await getSession(sessionId);
+  if (refreshed) {
+    return refreshed;
+  }
+
+  return toChatSession(updated);
 }
 
 /**
@@ -344,21 +386,18 @@ export async function listSessions(
     orderBy: { startedAt: 'desc' },
     take: options?.limit || 10,
     skip: options?.offset,
+    include: {
+      topic: {
+        select: {
+          id: true,
+          type: true,
+          originalInput: true,
+        },
+      },
+    },
   });
 
-  return sessions.map((s) => ({
-    id: s.id,
-    accountId: s.accountId,
-    speakerId: s.speakerId || undefined,
-    topicId: s.topicId || undefined,
-    sessionType: s.sessionType as 'practice' | 'review',
-    status: s.status as SessionStatus,
-    startedAt: s.startedAt,
-    endedAt: s.endedAt || undefined,
-    contextSummary: s.contextSummary as unknown as ChatSession['contextSummary'],
-    messageCount: s.messageCount,
-    extractedData: s.extractedData as unknown as ChatSession['extractedData'],
-  }));
+  return sessions.map((session) => toChatSession(session));
 }
 
 /**

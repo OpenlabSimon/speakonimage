@@ -24,8 +24,63 @@ import type { CEFRLevel } from '@/types';
 
 type ProfileSection = 'history' | 'settings';
 
+interface SessionTopicSummary {
+  id: string;
+  type: string;
+  originalInput: string;
+}
+
+interface SessionExtractionSummary {
+  sessionSummary?: string;
+  topicsDiscussed?: string[];
+}
+
+interface ConversationHistorySession {
+  id: string;
+  topicId?: string;
+  topicSummary?: SessionTopicSummary;
+  status: 'active' | 'ended';
+  startedAt: string;
+  endedAt?: string;
+  messageCount: number;
+  extractedData?: SessionExtractionSummary | null;
+}
+
 function countUniqueDays(values: string[]) {
   return new Set(values.map((value) => new Date(value).toISOString().slice(0, 10))).size;
+}
+
+function formatSessionDate(value?: string) {
+  if (!value) return '刚刚';
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function getSessionTitle(session: ConversationHistorySession) {
+  if (session.topicSummary?.originalInput?.trim()) {
+    return session.topicSummary.originalInput.trim();
+  }
+
+  const topicFromExtraction = session.extractedData?.topicsDiscussed?.[0]?.trim();
+  if (topicFromExtraction) {
+    return topicFromExtraction;
+  }
+
+  return 'Untitled conversation';
+}
+
+function getSessionSummary(session: ConversationHistorySession) {
+  const summary = session.extractedData?.sessionSummary?.trim();
+  if (summary) {
+    return summary;
+  }
+
+  return `共 ${session.messageCount} 条消息`;
 }
 
 export default function ProfilePage() {
@@ -53,11 +108,58 @@ export default function ProfilePage() {
   const [localRounds, setLocalRounds] = useState<StoredCoachRound[]>([]);
   const [currentTopic, setCurrentTopic] = useState<ReturnType<typeof loadCurrentTopicSummary>>(null);
   const [activeSection, setActiveSection] = useState<ProfileSection>('history');
+  const [conversationHistory, setConversationHistory] = useState<ConversationHistorySession[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalRounds(loadCoachRoundHistory());
     setCurrentTopic(loadCurrentTopicSummary());
   }, []);
+
+  useEffect(() => {
+    if (!remoteProfileEnabled) {
+      setConversationHistory([]);
+      setHistoryError(null);
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      setIsLoadingHistory(true);
+      setHistoryError(null);
+      try {
+        const response = await fetch('/api/sessions?limit=30', { cache: 'no-store' });
+        const result = await response.json();
+
+        if (!response.ok || !result.success || !Array.isArray(result.data)) {
+          throw new Error(result.error || '加载会话历史失败');
+        }
+
+        if (!cancelled) {
+          setConversationHistory(
+            (result.data as ConversationHistorySession[]).filter((session) => session.messageCount > 0)
+          );
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setHistoryError(loadError instanceof Error ? loadError.message : '加载会话历史失败');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [remoteProfileEnabled]);
 
   async function handleSaveInterests(labels: string[]) {
     setSaveMemoryError(null);

@@ -8,6 +8,12 @@ export type SessionStatus = 'active' | 'ended';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageContentType = 'text' | 'evaluation';
 
+export interface SessionTopicSummary {
+  id: string;
+  type: string;
+  originalInput: string;
+}
+
 // Chat session interface
 export interface ChatSession {
   id: string;
@@ -21,6 +27,7 @@ export interface ChatSession {
   contextSummary?: ContextSummary;
   messageCount: number;
   extractedData?: SessionExtractionResult;
+  topicSummary?: SessionTopicSummary;
 }
 
 // Chat message interface
@@ -36,6 +43,8 @@ export interface ChatMessage {
 
 // Message metadata for different message types
 export interface MessageMetadata {
+  source?: 'full_review' | 'live_coach' | 'system';
+
   // For user messages
   inputMethod?: 'voice' | 'text';
   audioUrl?: string;
@@ -46,7 +55,11 @@ export interface MessageMetadata {
   overallScore?: number;
   estimatedCefr?: CEFRLevel;
   evaluationType?: 'translation' | 'expression';
+  speechScript?: string;
   ttsText?: string;
+  audioProvider?: 'elevenlabs' | 'azure' | 'gemini';
+  audioVoiceId?: string;
+  audioFormat?: 'mp3' | 'wav';
 
   // For system messages
   systemMessageType?: 'topic_context' | 'profile_injection' | 'context_summary';
