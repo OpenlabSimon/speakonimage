@@ -92,7 +92,13 @@ describe('DELETE /api/sessions/[id]', () => {
 
   it('ends session and triggers extraction', async () => {
     setAuthenticated({ id: 'user-1' });
-    prismaMock.chatSession.findUnique.mockResolvedValue(mockSession);
+    prismaMock.chatSession.findUnique
+      .mockResolvedValueOnce(mockSession)
+      .mockResolvedValueOnce({
+        ...mockSession,
+        status: 'ended',
+        endedAt: new Date(),
+      });
     prismaMock.chatMessage.findMany.mockResolvedValue([]);
     prismaMock.chatSession.update.mockResolvedValue({
       ...mockSession,
@@ -126,7 +132,13 @@ describe('PATCH /api/sessions/[id]', () => {
 
   it('transitions active session to ended', async () => {
     setAuthenticated({ id: 'user-1' });
-    prismaMock.chatSession.findUnique.mockResolvedValue(mockSession);
+    prismaMock.chatSession.findUnique
+      .mockResolvedValueOnce(mockSession)
+      .mockResolvedValueOnce({
+        ...mockSession,
+        status: 'ended',
+        endedAt: new Date(),
+      });
     prismaMock.chatMessage.findMany.mockResolvedValue([]);
     prismaMock.chatSession.update.mockResolvedValue({
       ...mockSession,
@@ -144,6 +156,7 @@ describe('PATCH /api/sessions/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(data.success).toBe(true);
+    expect(data.data.status).toBe('ended');
   });
 
   it('returns existing session when no status change', async () => {

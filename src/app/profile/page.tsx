@@ -83,6 +83,24 @@ function getSessionSummary(session: ConversationHistorySession) {
   return `共 ${session.messageCount} 条消息`;
 }
 
+function formatTopicTypeLabel(type?: string) {
+  if (type === 'translation') {
+    return 'Translation';
+  }
+  if (type === 'expression') {
+    return 'Expression';
+  }
+  return 'Conversation';
+}
+
+function truncateText(value: string, maxLength = 140) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -258,6 +276,15 @@ export default function ProfilePage() {
           }
         : null,
   }));
+  const localConversationHistory = localRounds.map((round) => ({
+    id: round.id,
+    title: round.topic?.originalInput || 'Local practice round',
+    summary: truncateText(round.reviewText.replace(/\s+/g, ' ').trim() || '这轮练习已经生成老师点评。', 120),
+    createdAt: round.createdAt,
+    messageCount: 2,
+    score: round.overallScore,
+    topicType: round.topic?.type,
+  }));
 
   const handleReturnToPractice = () => {
     if (remoteProfileEnabled && currentTopic?.id) {
@@ -402,98 +429,222 @@ export default function ProfilePage() {
 
         {activeSection === 'history' && (
           <div className="mt-6 space-y-4">
-            <div className="rounded-[28px] border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
-              <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">最近老师点评</h2>
-                  <div className="mt-1 text-xs text-amber-700">
-                    先看最近一条反馈，再决定继续练哪一轮。
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Conversation history
+                  </div>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">
+                    {usingLocalProfile ? '最近本机练习记录' : '最近对话会话'}
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                    {usingLocalProfile
+                      ? '本机模式下先展示最近保存的练习轮次。登录后这里会变成真正的会话历史，可回看完整消息流和最终点评。'
+                      : '这里按聊天产品的方式列出最近会话。点开任意一条，就能回看完整消息流和这轮最终点评。'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <div className="font-medium text-slate-900">
+                    {usingLocalProfile ? localConversationHistory.length : conversationHistory.length}
+                  </div>
+                  <div className="mt-1">
+                    {usingLocalProfile ? '本地轮次' : '最近会话'}
                   </div>
                 </div>
-                <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-amber-700">
-                  优先查看
-                </span>
               </div>
-              <RecentCoachFeedback feedback={usingLocalProfile ? localRecentFeedback : profileData?.recentCoachFeedback || []} />
-            </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
-              <h2 className="text-base font-semibold text-slate-900">会话概况</h2>
-              <div className="mt-3">
-                <StatsOverview stats={usingLocalProfile ? localStats : profileData?.stats || localStats} />
-              </div>
-              {usingLocalProfile && (
-                <div className="mt-3 text-sm text-slate-500">
-                  当前本机等级：{levelHistory?.currentLevel || 'B1'}
+              {usingLocalProfile ? (
+                localConversationHistory.length > 0 ? (
+                  <div className="mt-5 space-y-3">
+                    {localConversationHistory.map((round) => (
+                      <div
+                        key={round.id}
+                        className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                Local
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                {formatTopicTypeLabel(round.topicType)}
+                              </span>
+                            </div>
+                            <div className="mt-3 text-base font-semibold text-slate-900">
+                              {truncateText(round.title, 80)}
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-slate-600">
+                              {round.summary}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-sm text-slate-500 sm:text-right">
+                            <div>{formatSessionDate(round.createdAt)}</div>
+                            <div className="mt-1">Score {Math.round(round.score)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm leading-6 text-slate-600">
+                    还没有本地练习记录。先去开始一轮对话，结束后这里会出现最近的练习历史。
+                  </div>
+                )
+              ) : isLoadingHistory ? (
+                <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
+                  正在加载最近会话...
+                </div>
+              ) : historyError ? (
+                <div className="mt-5 rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
+                  {historyError}
+                </div>
+              ) : conversationHistory.length > 0 ? (
+                <div className="mt-5 space-y-3">
+                  {conversationHistory.map((session) => (
+                    <Link
+                      key={session.id}
+                      href={`/profile/sessions/${session.id}`}
+                      className="group block rounded-3xl border border-slate-200 bg-slate-50/70 p-4 transition hover:border-slate-300 hover:bg-white"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                                session.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-slate-200/80 text-slate-600'
+                              }`}
+                            >
+                              {session.status === 'active' ? '进行中' : '已结束'}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                              {formatTopicTypeLabel(session.topicSummary?.type)}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                              {session.messageCount} 条消息
+                            </span>
+                          </div>
+                          <div className="mt-3 text-base font-semibold text-slate-900 group-hover:text-sky-700">
+                            {truncateText(getSessionTitle(session), 90)}
+                          </div>
+                          <div className="mt-2 text-sm leading-6 text-slate-600">
+                            {truncateText(getSessionSummary(session), 160)}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-sm text-slate-500 sm:text-right">
+                          <div>{formatSessionDate(session.endedAt || session.startedAt)}</div>
+                          <div className="mt-1 text-xs text-slate-400">
+                            {session.status === 'active' ? '打开继续查看' : '查看完整回放'}
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm leading-6 text-slate-600">
+                  还没有保存下来的会话。先开启一轮对话并生成最终点评，历史页就会开始积累内容。
                 </div>
               )}
             </div>
 
-            {!usingLocalProfile && profileData && (
-              <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
-                <h2 className="text-base font-semibold text-slate-900">最近话题与草稿</h2>
-                <div className="mt-4">
-                  <RecentTopicHistory topics={profileData.recentTopics} />
+            <details className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <summary className="cursor-pointer list-none text-base font-semibold text-slate-900">
+                More insights
+              </summary>
+              <div className="mt-4 space-y-4">
+                <div className="rounded-3xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base font-semibold text-slate-900">最近老师点评</h2>
+                      <div className="mt-1 text-xs text-amber-700">
+                        先看最近一条反馈，再决定继续练哪一轮。
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-amber-700">
+                      优先查看
+                    </span>
+                  </div>
+                  <RecentCoachFeedback feedback={usingLocalProfile ? localRecentFeedback : profileData?.recentCoachFeedback || []} />
                 </div>
-              </div>
-            )}
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
-              <h2 className="text-base font-semibold text-slate-900">
-                {usingLocalProfile ? '最近本地练习' : '最近提交记录'}
-              </h2>
-              <div className="mt-4">
-                <RecentActivity submissions={usingLocalProfile ? localRecentActivity : profileData?.recentSubmissions || []} />
-              </div>
-            </div>
-
-            {!usingLocalProfile && profileData && (
-              <details className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
-                <summary className="cursor-pointer list-none text-base font-semibold text-slate-900">
-                  Learning data
-                </summary>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-slate-900">语法错误分析</h3>
-                    <GrammarErrorList errors={profileData.profile.grammarProfile.topErrors} />
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <h2 className="text-base font-semibold text-slate-900">会话概况</h2>
+                  <div className="mt-3">
+                    <StatsOverview stats={usingLocalProfile ? localStats : profileData?.stats || localStats} />
                   </div>
+                  {usingLocalProfile && (
+                    <div className="mt-3 text-sm text-slate-500">
+                      当前本机等级：{levelHistory?.currentLevel || 'B1'}
+                    </div>
+                  )}
+                </div>
 
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-slate-900">词汇概况</h3>
-                    <VocabSummary vocab={profileData.profile.vocabularyProfile} />
+                {!usingLocalProfile && profileData && (
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <h2 className="text-base font-semibold text-slate-900">最近话题与草稿</h2>
+                    <div className="mt-4">
+                      <RecentTopicHistory topics={profileData.recentTopics} />
+                    </div>
                   </div>
+                )}
 
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-slate-900">多时间尺度画像</h3>
-                    <ProfileWindows snapshots={profileData.profile.usageProfile?.snapshots || []} />
-                  </div>
-
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-slate-900">用户记忆</h3>
-                    <LearnerMemory
-                      key={profileData.profile.interests.map((item) => item.key).join('|') || 'empty-interests'}
-                      interests={profileData.profile.interests}
-                      goals={profileData.profile.goals}
-                      entities={profileData.profile.entities}
-                      memorySnippets={profileData.profile.memorySnippets}
-                      coachMemory={profileData.profile.coachMemory}
-                      onSaveInterests={handleSaveInterests}
-                      isSavingInterests={isSavingInterests}
-                    />
-                  </div>
-
-                  <div>
-                    <h3 className="mb-3 text-sm font-semibold text-slate-900">下一步推荐</h3>
-                    <RecommendedPractice
-                      recommendations={profileData.profile.recommendations}
-                      feedback={profileData.profile.recommendationFeedback}
-                      onFeedback={handleRecommendationFeedback}
-                      pendingRecommendationId={pendingRecommendationId}
-                    />
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {usingLocalProfile ? '最近本地练习' : '最近提交记录'}
+                  </h2>
+                  <div className="mt-4">
+                    <RecentActivity submissions={usingLocalProfile ? localRecentActivity : profileData?.recentSubmissions || []} />
                   </div>
                 </div>
-              </details>
-            )}
+
+                {!usingLocalProfile && profileData && (
+                  <div className="space-y-4 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold text-slate-900">语法错误分析</h3>
+                      <GrammarErrorList errors={profileData.profile.grammarProfile.topErrors} />
+                    </div>
+
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold text-slate-900">词汇概况</h3>
+                      <VocabSummary vocab={profileData.profile.vocabularyProfile} />
+                    </div>
+
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold text-slate-900">多时间尺度画像</h3>
+                      <ProfileWindows snapshots={profileData.profile.usageProfile?.snapshots || []} />
+                    </div>
+
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold text-slate-900">用户记忆</h3>
+                      <LearnerMemory
+                        key={profileData.profile.interests.map((item) => item.key).join('|') || 'empty-interests'}
+                        interests={profileData.profile.interests}
+                        goals={profileData.profile.goals}
+                        entities={profileData.profile.entities}
+                        memorySnippets={profileData.profile.memorySnippets}
+                        coachMemory={profileData.profile.coachMemory}
+                        onSaveInterests={handleSaveInterests}
+                        isSavingInterests={isSavingInterests}
+                      />
+                    </div>
+
+                    <div>
+                      <h3 className="mb-3 text-sm font-semibold text-slate-900">下一步推荐</h3>
+                      <RecommendedPractice
+                        recommendations={profileData.profile.recommendations}
+                        feedback={profileData.profile.recommendationFeedback}
+                        onFeedback={handleRecommendationFeedback}
+                        pendingRecommendationId={pendingRecommendationId}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
         )}
 
