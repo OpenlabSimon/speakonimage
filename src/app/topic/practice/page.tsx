@@ -1071,6 +1071,87 @@ function TopicPracticePageContent() {
     return '准备开始';
   })();
 
+  const renderClassicAdvancedPanel = () => (
+    topicData ? (
+    <details className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+        More / Settings
+      </summary>
+      <div className="mt-4 space-y-4">
+        <CoachPreferencesPanel
+          characterId={characterId}
+          onCharacterChange={setCharacterId}
+          reviewMode={reviewMode}
+          onReviewModeChange={setReviewMode}
+          autoPlayAudio={reviewAutoPlay}
+          onAutoPlayAudioChange={setReviewAutoPlay}
+          voiceId={voiceId}
+          onVoiceIdChange={setVoiceId}
+          isRemoteBacked={isRemoteBacked}
+        />
+
+        <VocabPanel vocabulary={topicData.suggestedVocab} />
+
+        {topicData.type === 'expression' &&
+          topicData.grammarHints &&
+          topicData.grammarHints.length > 0 && (
+            <GrammarPanel grammarHints={topicData.grammarHints} />
+          )}
+
+        {draftHistory.length > 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">草稿历史</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  需要时再把旧版本带回编辑区。
+                </div>
+              </div>
+              <div className="text-xs text-slate-400">共 {draftHistory.length} 版</div>
+            </div>
+
+            <div className="space-y-3">
+              {draftHistory.slice().reverse().slice(0, 4).map((draft, index) => (
+                <div
+                  key={draft.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-200 px-2 text-xs font-medium text-slate-700">
+                        {draftHistory.length - index}
+                      </span>
+                      <span className="text-sm font-medium text-slate-800">
+                        {draft.label}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleUseDraft(draft.text)}
+                      className="rounded-lg bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-200"
+                    >
+                      带入编辑框
+                    </button>
+                  </div>
+                  <div className="whitespace-pre-wrap text-sm text-slate-600 line-clamp-4">
+                    {draft.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+          <strong>提示：</strong>{' '}
+          {topicData.type === 'translation'
+            ? '自然地表达意思即可，重点是传达语义，不需要逐字翻译。'
+            : '先把主句说完整，再补一个原因、例子或个人感受。'}
+        </div>
+      </div>
+    </details>
+    ) : null
+  );
+
   const topicContent = getTopicContent();
 
   if (!topicData || !topicContent) {
@@ -1478,18 +1559,6 @@ function TopicPracticePageContent() {
           </div>
         </div>
 
-        <CoachPreferencesPanel
-          characterId={characterId}
-          onCharacterChange={setCharacterId}
-          reviewMode={reviewMode}
-          onReviewModeChange={setReviewMode}
-          autoPlayAudio={reviewAutoPlay}
-          onAutoPlayAudioChange={setReviewAutoPlay}
-          voiceId={voiceId}
-          onVoiceIdChange={setVoiceId}
-          isRemoteBacked={isRemoteBacked}
-        />
-
         {topicData.resumeMessage && (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
             {topicData.resumeMessage}
@@ -1500,20 +1569,6 @@ function TopicPracticePageContent() {
         <div className="mb-6">
           <ChinesePromptCard topicContent={topicContent} />
         </div>
-
-        {/* Vocabulary Panel */}
-        <div className="mb-6">
-          <VocabPanel vocabulary={topicData.suggestedVocab} />
-        </div>
-
-        {/* Grammar Panel (only for expression mode) */}
-        {topicData.type === 'expression' &&
-          topicData.grammarHints &&
-          topicData.grammarHints.length > 0 && (
-            <div className="mb-6">
-              <GrammarPanel grammarHints={topicData.grammarHints} />
-            </div>
-          )}
 
         {topicData.practiceGoal && (
           <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
@@ -1526,52 +1581,7 @@ function TopicPracticePageContent() {
           </div>
         )}
 
-        {draftHistory.length > 0 && (
-          <div className="mb-6 bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-800">
-                  可持续优化的草稿历史
-                </h2>
-                <p className="text-sm text-gray-500">
-                  评估输入和后续每次回答都会保留下来，方便你继续改写
-                </p>
-              </div>
-              <div className="text-sm text-gray-400">
-                共 {draftHistory.length} 版
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {draftHistory.slice().reverse().slice(0, 4).map((draft, index) => (
-                <div
-                  key={draft.id}
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-gray-200 px-2 text-xs font-medium text-gray-700">
-                        {draftHistory.length - index}
-                      </span>
-                      <span className="text-sm font-medium text-gray-800">
-                        {draft.label}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleUseDraft(draft.text)}
-                      className="px-3 py-1.5 rounded-lg bg-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-200 transition-colors"
-                    >
-                      带入编辑框
-                    </button>
-                  </div>
-                  <div className="text-sm text-gray-600 whitespace-pre-wrap line-clamp-4">
-                    {draft.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {renderClassicAdvancedPanel()}
 
         {/* Error Display */}
         {error && (
@@ -1815,15 +1825,6 @@ function TopicPracticePageContent() {
           </div>
         )}
 
-        {/* Tips */}
-        <div className="mt-6 p-4 bg-blue-50 rounded-xl">
-          <div className="text-sm text-blue-800">
-            <strong>提示：</strong>{' '}
-            {topicData.type === 'translation'
-              ? '自然地表达意思即可，多种正确答案都会被认可！重点是传达相同的意思，不需要逐字翻译。'
-              : '大胆发挥！利用建议的词汇和语法来丰富你的表达。没有唯一的正确答案。'}
-          </div>
-        </div>
       </div>
 
       {/* Level Change Modal */}

@@ -15,18 +15,10 @@ export function UserMenu() {
     );
   }
 
-  if (!session) {
-    return (
-      <div className="px-3 py-2 text-sm text-gray-500">
-        初始化中...
-      </div>
-    );
-  }
-
-  const isGuest = session.user?.isGuest;
-  const name = session.user?.name;
-  const email = session.user?.email;
-  const image = session.user?.image;
+  const isGuest = !session || session.user?.isGuest;
+  const name = session?.user?.name;
+  const email = session?.user?.email;
+  const image = session?.user?.image;
   const displayName = isGuest ? '本机用户' : (name || email || '用户');
   const initial = isGuest ? '本' : (name || email || '?').charAt(0).toUpperCase();
 
@@ -34,7 +26,7 @@ export function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-medium hover:bg-blue-600 transition-colors overflow-hidden"
+        className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-blue-500 font-medium text-white transition-colors hover:bg-blue-600"
       >
         {image ? (
           <Image
@@ -74,7 +66,7 @@ export function UserMenu() {
                 onClick={() => setIsOpen(false)}
                 className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                我的档案
+                历史与设置
               </Link>
               {!isGuest && (
                 <button

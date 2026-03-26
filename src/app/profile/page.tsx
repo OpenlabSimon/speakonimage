@@ -1,8 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useProfile } from '@/hooks/useProfile';
+import { useLevelHistory } from '@/hooks/useLevelHistory';
 import { useCoachPreferences } from '@/hooks/useCoachPreferences';
 import { CoachPreferencesPanel } from '@/components/evaluation/CoachPreferencesPanel';
 import { StatsOverview } from '@/components/profile/StatsOverview';
@@ -11,10 +14,28 @@ import { VocabSummary } from '@/components/profile/VocabSummary';
 import { RecentActivity } from '@/components/profile/RecentActivity';
 import { RecentTopicHistory } from '@/components/profile/RecentTopicHistory';
 import { RecentCoachFeedback } from '@/components/profile/RecentCoachFeedback';
+import { LearnerMemory } from '@/components/profile/LearnerMemory';
+import { RecommendedPractice } from '@/components/profile/RecommendedPractice';
+import { ProfileWindows } from '@/components/profile/ProfileWindows';
+import { LocalPracticeMigrationCard } from '@/components/migration/LocalPracticeMigrationCard';
+import { loadCoachRoundHistory, type StoredCoachRound } from '@/lib/coach-round-storage';
+import { CURRENT_TOPIC_STORAGE_KEY, loadCurrentTopicSummary } from '@/lib/practice/storage';
+import type { CEFRLevel } from '@/types';
+
+type ProfileSection = 'history' | 'settings';
+
+function countUniqueDays(values: string[]) {
+  return new Set(values.map((value) => new Date(value).toISOString().slice(0, 10))).size;
+}
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { data: session, status } = useSession();
-  const { data: profileData, loading, error } = useProfile(status === 'authenticated');
+  const isGuestSession = session?.user?.isGuest === true;
+  const remoteProfileEnabled = status === 'authenticated' && !isGuestSession;
+  const profileCacheScope = remoteProfileEnabled ? session?.user?.id || 'remote-user' : 'local';
+  const { data: profileData, error, refetch } = useProfile(remoteProfileEnabled, profileCacheScope);
+  const { history: levelHistory, isLoaded: isLevelLoaded } = useLevelHistory();
   const {
     characterId,
     setCharacterId,
@@ -26,8 +47,67 @@ export default function ProfilePage() {
     setVoiceId,
     isRemoteBacked,
   } = useCoachPreferences();
+  const [saveMemoryError, setSaveMemoryError] = useState<string | null>(null);
+  const [isSavingInterests, setIsSavingInterests] = useState(false);
+  const [pendingRecommendationId, setPendingRecommendationId] = useState<string | null>(null);
+  const [localRounds, setLocalRounds] = useState<StoredCoachRound[]>([]);
+  const [currentTopic, setCurrentTopic] = useState<ReturnType<typeof loadCurrentTopicSummary>>(null);
+  const [activeSection, setActiveSection] = useState<ProfileSection>('history');
 
-  if (loading && !profileData) {
+  useEffect(() => {
+    setLocalRounds(loadCoachRoundHistory());
+    setCurrentTopic(loadCurrentTopicSummary());
+  }, []);
+
+  async function handleSaveInterests(labels: string[]) {
+    setSaveMemoryError(null);
+    setIsSavingInterests(true);
+    try {
+      const response = await fetch('/api/user/profile/interests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interests: labels }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '保存兴趣标签失败');
+      }
+      await refetch();
+    } catch (saveError) {
+      setSaveMemoryError(saveError instanceof Error ? saveError.message : '保存兴趣标签失败');
+    } finally {
+      setIsSavingInterests(false);
+    }
+  }
+
+  async function handleRecommendationFeedback(input: {
+    recommendationId: string;
+    recommendationKind: 'topic' | 'vocabulary' | 'example';
+    recommendationTitle: string;
+    sentiment: 'helpful' | 'too_easy' | 'too_hard' | 'good_direction_not_now' | 'off_topic';
+    relatedInterestKeys: string[];
+  }) {
+    setSaveMemoryError(null);
+    setPendingRecommendationId(input.recommendationId);
+    try {
+      const response = await fetch('/api/user/profile/recommendations/feedback', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '保存推荐反馈失败');
+      }
+      await refetch();
+    } catch (feedbackError) {
+      setSaveMemoryError(feedbackError instanceof Error ? feedbackError.message : '保存推荐反馈失败');
+    } finally {
+      setPendingRecommendationId(null);
+    }
+  }
+
+  if ((status === 'loading' || (status === 'unauthenticated' && !isLevelLoaded)) && !profileData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -38,114 +118,346 @@ export default function ProfilePage() {
     );
   }
 
-  if (status === 'unauthenticated' && !profileData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">...</div>
-          <div className="text-gray-600">正在初始化本机学习档案...</div>
-        </div>
-      </div>
-    );
-  }
+  const usingLocalProfile = !remoteProfileEnabled || !profileData;
+  const email = isGuestSession ? '本机用户' : (session?.user?.email || '本机用户');
+  const initial = isGuestSession ? '本' : email.charAt(0).toUpperCase();
+  const localStats = {
+    topicCount: localRounds.length,
+    submissionCount: localRounds.length,
+    streak: countUniqueDays(localRounds.map((item) => item.createdAt)),
+    vocabSize: 0,
+    activeDays: countUniqueDays(localRounds.map((item) => item.createdAt)),
+  };
+  const localRecentFeedback = localRounds.map((round) => ({
+    id: round.id,
+    content: round.reviewText,
+    speechScript: round.speechScript,
+    audioUrl: round.audioReview.audioUrl ?? null,
+    createdAt: round.createdAt,
+    source: 'coach_review' as const,
+    topic: round.topic ?? null,
+  }));
+  const localRecentActivity = localRounds.map((round) => ({
+    id: round.id,
+    transcribedText: round.userResponse,
+    rawAudioUrl: round.audioUrl ?? null,
+    evaluation: {},
+    difficultyAssessment: null,
+    createdAt: round.createdAt,
+    topic: round.topic
+      ? {
+          type: round.topic.type,
+          originalInput: round.topic.originalInput,
+        }
+      : round.practiceMode
+        ? {
+            type: round.practiceMode.includes('translation') ? 'translation' : 'expression',
+            originalInput: round.reviewText.slice(0, 60),
+          }
+        : null,
+  }));
 
-  const email = session?.user?.email || '本机用户';
-  const initial = session?.user?.isGuest ? '本' : email.charAt(0).toUpperCase();
+  const handleReturnToPractice = () => {
+    if (remoteProfileEnabled && currentTopic?.id) {
+      router.push(`/topic/practice?topicId=${currentTopic.id}`);
+      return;
+    }
+
+    const fallbackTopic = currentTopic
+      ?? localRounds.find((round) => round.topic)?.topic
+      ?? profileData?.recentTopics?.[0]
+      ?? null;
+
+    if (!fallbackTopic) {
+      router.push('/');
+      return;
+    }
+
+    if (remoteProfileEnabled && 'id' in fallbackTopic && fallbackTopic.id) {
+      router.push(`/topic/practice?topicId=${fallbackTopic.id}`);
+      return;
+    }
+
+    let targetCefr: CEFRLevel = levelHistory?.currentLevel || 'B1';
+    try {
+      const rawHistory = window.localStorage.getItem('speakonimage_level_history');
+      if (rawHistory) {
+        const parsed = JSON.parse(rawHistory) as { currentLevel?: CEFRLevel };
+        if (parsed.currentLevel) {
+          targetCefr = parsed.currentLevel;
+        }
+      }
+    } catch {
+      // Keep current fallback level.
+    }
+
+    window.localStorage.setItem(
+      CURRENT_TOPIC_STORAGE_KEY,
+      JSON.stringify({
+        type: fallbackTopic.type,
+        chinesePrompt: 'originalInput' in fallbackTopic ? fallbackTopic.originalInput : fallbackTopic.chinesePrompt,
+        suggestedVocab: [],
+        grammarHints: [],
+        guidingQuestions: [],
+        keyPoints: [],
+        difficultyMetadata: {
+          targetCefr,
+          vocabComplexity: 0,
+          grammarComplexity: 0,
+        },
+      })
+    );
+    router.push(`/topic/practice?resume=${Date.now()}`);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#f8fafc_38%,_#f8fafc_100%)]">
+      <nav className="border-b border-slate-200/80 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <Link href="/" className="text-lg font-semibold text-slate-900">
             SpeakOnImage
           </Link>
-          <Link href="/" className="text-gray-600 hover:text-gray-800 text-sm">
-            ← 返回练习
-          </Link>
+          <button
+            onClick={handleReturnToPractice}
+            className="min-h-11 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            type="button"
+          >
+            返回练习
+          </button>
         </div>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        {/* Profile Header */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
-          <div className="w-20 h-20 rounded-full bg-blue-500 text-white flex items-center justify-center text-3xl font-bold mx-auto mb-3">
-            {initial}
-          </div>
-          <h1 className="text-xl font-bold text-gray-900 mb-1">{email}</h1>
-          {profileData && (
-            <div className="inline-flex items-center gap-2 mt-2">
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-semibold">
-                {profileData.profile.estimatedCefr}
-              </span>
-              {profileData.profile.confidence > 0 && (
-                <span className="text-xs text-gray-400">
-                  置信度 {Math.round(profileData.profile.confidence * 100)}%
-                </span>
-              )}
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-sky-600 text-2xl font-bold text-white">
+                {initial}
+              </div>
+              <div>
+                <div className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  History & Settings
+                </div>
+                <h1 className="mt-1 text-2xl font-semibold text-slate-950">{email}</h1>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
+                    当前等级 {profileData?.profile.estimatedCefr || levelHistory?.currentLevel || 'B1'}
+                  </span>
+                  {profileData?.profile.confidence ? (
+                    <span className="text-xs text-slate-500">
+                      置信度 {Math.round(profileData.profile.confidence * 100)}%
+                    </span>
+                  ) : null}
+                  <span className="text-xs text-slate-500">
+                    {usingLocalProfile ? '本机模式' : '已登录'}
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setActiveSection('history')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  activeSection === 'history'
+                    ? 'bg-slate-900 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                History
+              </button>
+              <button
+                onClick={() => setActiveSection('settings')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  activeSection === 'settings'
+                    ? 'bg-slate-900 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Settings
+              </button>
+            </div>
+          </div>
         </div>
 
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             {error}
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-lg p-5">
-          <h2 className="text-base font-semibold text-gray-800 mb-3">教练偏好</h2>
-          <CoachPreferencesPanel
-            characterId={characterId}
-            onCharacterChange={setCharacterId}
-            reviewMode={reviewMode}
-            onReviewModeChange={setReviewMode}
-            autoPlayAudio={autoPlayAudio}
-            onAutoPlayAudioChange={setAutoPlayAudio}
-            voiceId={voiceId}
-            onVoiceIdChange={setVoiceId}
-            isRemoteBacked={isRemoteBacked}
-          />
-        </div>
+        {saveMemoryError && (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            {saveMemoryError}
+          </div>
+        )}
 
-        {profileData && (
-          <>
-            {/* Stats Grid */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">学习统计</h2>
-              <StatsOverview stats={profileData.stats} />
+        {usingLocalProfile && (
+          <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
+            当前是本地测试模式。这里优先展示最近会话和当前设置，不强制依赖登录。
+          </div>
+        )}
+
+        {activeSection === 'history' && (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-[28px] border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">最近老师点评</h2>
+                  <div className="mt-1 text-xs text-amber-700">
+                    先看最近一条反馈，再决定继续练哪一轮。
+                  </div>
+                </div>
+                <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-amber-700">
+                  优先查看
+                </span>
+              </div>
+              <RecentCoachFeedback feedback={usingLocalProfile ? localRecentFeedback : profileData?.recentCoachFeedback || []} />
             </div>
 
-            {/* Grammar Errors */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">语法错误分析</h2>
-              <GrammarErrorList errors={profileData.profile.grammarProfile.topErrors} />
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <h2 className="text-base font-semibold text-slate-900">会话概况</h2>
+              <div className="mt-3">
+                <StatsOverview stats={usingLocalProfile ? localStats : profileData?.stats || localStats} />
+              </div>
+              {usingLocalProfile && (
+                <div className="mt-3 text-sm text-slate-500">
+                  当前本机等级：{levelHistory?.currentLevel || 'B1'}
+                </div>
+              )}
             </div>
 
-            {/* Vocabulary */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">词汇概况</h2>
-              <VocabSummary vocab={profileData.profile.vocabularyProfile} />
+            {!usingLocalProfile && profileData && (
+              <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+                <h2 className="text-base font-semibold text-slate-900">最近话题与草稿</h2>
+                <div className="mt-4">
+                  <RecentTopicHistory topics={profileData.recentTopics} />
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <h2 className="text-base font-semibold text-slate-900">
+                {usingLocalProfile ? '最近本地练习' : '最近提交记录'}
+              </h2>
+              <div className="mt-4">
+                <RecentActivity submissions={usingLocalProfile ? localRecentActivity : profileData?.recentSubmissions || []} />
+              </div>
             </div>
 
-            {/* Recent Inputs */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">历史输入与草稿</h2>
-              <RecentTopicHistory topics={profileData.recentTopics} />
+            {!usingLocalProfile && profileData && (
+              <details className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+                <summary className="cursor-pointer list-none text-base font-semibold text-slate-900">
+                  Learning data
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900">语法错误分析</h3>
+                    <GrammarErrorList errors={profileData.profile.grammarProfile.topErrors} />
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900">词汇概况</h3>
+                    <VocabSummary vocab={profileData.profile.vocabularyProfile} />
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900">多时间尺度画像</h3>
+                    <ProfileWindows snapshots={profileData.profile.usageProfile?.snapshots || []} />
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900">用户记忆</h3>
+                    <LearnerMemory
+                      key={profileData.profile.interests.map((item) => item.key).join('|') || 'empty-interests'}
+                      interests={profileData.profile.interests}
+                      goals={profileData.profile.goals}
+                      entities={profileData.profile.entities}
+                      memorySnippets={profileData.profile.memorySnippets}
+                      coachMemory={profileData.profile.coachMemory}
+                      onSaveInterests={handleSaveInterests}
+                      isSavingInterests={isSavingInterests}
+                    />
+                  </div>
+
+                  <div>
+                    <h3 className="mb-3 text-sm font-semibold text-slate-900">下一步推荐</h3>
+                    <RecommendedPractice
+                      recommendations={profileData.profile.recommendations}
+                      feedback={profileData.profile.recommendationFeedback}
+                      onFeedback={handleRecommendationFeedback}
+                      pendingRecommendationId={pendingRecommendationId}
+                    />
+                  </div>
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'settings' && (
+          <div className="mt-6 space-y-4">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <h2 className="text-base font-semibold text-slate-900">Coach settings</h2>
+              <div className="mt-4">
+                <CoachPreferencesPanel
+                  characterId={characterId}
+                  onCharacterChange={setCharacterId}
+                  reviewMode={reviewMode}
+                  onReviewModeChange={setReviewMode}
+                  autoPlayAudio={autoPlayAudio}
+                  onAutoPlayAudioChange={setAutoPlayAudio}
+                  voiceId={voiceId}
+                  onVoiceIdChange={setVoiceId}
+                  isRemoteBacked={isRemoteBacked}
+                />
+              </div>
             </div>
 
-            {/* Coach Feedback */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">历史点评</h2>
-              <RecentCoachFeedback feedback={profileData.recentCoachFeedback} />
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.45)]">
+              <h2 className="text-base font-semibold text-slate-900">Practice defaults</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-medium text-slate-900">当前等级</div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-950">
+                    {profileData?.profile.estimatedCefr || levelHistory?.currentLevel || 'B1'}
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-slate-500">
+                    这是当前聊天和话题生成默认参考等级。
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-medium text-slate-900">当前模式</div>
+                  <div className="mt-2 text-base font-semibold text-slate-950">
+                    Chat-first
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-slate-500">
+                    首页默认走实时对话，经典模式保留为次级入口。
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleReturnToPractice}
+                  className="min-h-11 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  返回当前练习
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/?view=classic')}
+                  className="min-h-11 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  打开经典模式
+                </button>
+              </div>
             </div>
 
-            {/* Recent Activity */}
-            <div className="bg-white rounded-2xl shadow-lg p-5">
-              <h2 className="text-base font-semibold text-gray-800 mb-3">最近提交记录</h2>
-              <RecentActivity submissions={profileData.recentSubmissions} />
-            </div>
-          </>
+            {usingLocalProfile && <LocalPracticeMigrationCard />}
+          </div>
         )}
       </div>
     </div>
