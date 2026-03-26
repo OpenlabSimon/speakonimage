@@ -27,7 +27,8 @@ What is now confirmed:
 
 - repo secret `GEMINI_OFFICIAL_API_KEY` was replaced with a verified working key
 - fresh workflow runs now use the fixed summary step
-- the strict gate step now injects `GEMINI_LIVE_PROXY_URL=http://127.0.0.1:7897`
+- the strict gate step now reads optional `GEMINI_LIVE_PROXY_URL` from runner env
+  or GitHub Actions config instead of hard-coding a localhost proxy in the repo
 - LaunchAgent service mode is still unreliable for the strict real-mic gate
 - foreground `./run.sh` is currently the verified way to run the strict real-mic gate
 
@@ -204,13 +205,17 @@ Run these in order.
 ```bash
 cd ~/actions-runner
 ./svc.sh stop
-./run.sh
+GEMINI_LIVE_PROXY_URL=http://127.0.0.1:7897 ./run.sh
 ```
 
 Keep the Terminal session open while the gate runs.
 
+If this machine later gets direct egress to Google's Gemini endpoint, drop the
+`GEMINI_LIVE_PROXY_URL=...` prefix.
+
 ### 2. Verify Secrets Are Still Present
 
+```bash
 gh secret list --repo OpenlabSimon/speakonimage
 ```
 

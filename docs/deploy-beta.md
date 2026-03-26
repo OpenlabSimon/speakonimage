@@ -23,6 +23,10 @@ If using coach review audio in production:
 - `GEMINI_TTS_API_KEY` or `COACH_REVIEW_TTS_PROVIDER=azure`
 - `BLOB_READ_WRITE_TOKEN`
 
+Optional only when your cloud host cannot reach Google's Gemini endpoint directly:
+
+- `GEMINI_LIVE_PROXY_URL`
+
 For invite-only beta launch:
 
 - `INVITE_GATE_ENABLED=true`
@@ -41,6 +45,11 @@ Provider routing:
 
 - Critical paths use Google official Gemini first, then fall back to hiapi if available
 - Background paths use hiapi first, then fall back to Google official Gemini if available
+
+Gemini Live egress:
+
+- leave `GEMINI_LIVE_PROXY_URL` unset on normal cloud deployments with direct egress
+- only configure it when the host must reach Google through a relay or proxy
 
 ## Invite flow
 

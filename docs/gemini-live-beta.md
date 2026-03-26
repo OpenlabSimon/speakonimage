@@ -25,6 +25,7 @@ Notes:
 - `GEMINI_OFFICIAL_API_KEY` is used by the server-side ephemeral token endpoint.
 - `GEMINI_LIVE_MODEL` should be a Gemini native-audio model that supports Live bidi sessions.
 - Gemini ephemeral tokens only work with the Live API `v1alpha` constrained WebSocket endpoint. Use `...GenerativeService.BidiGenerateContentConstrained`, not `v1beta` and not the unconstrained `BidiGenerateContent` route.
+- `GEMINI_LIVE_PROXY_URL` is optional. Leave it unset when the host can reach Google directly; set it only when the host needs special egress through a relay or proxy.
 
 ## Local run steps
 

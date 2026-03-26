@@ -57,6 +57,17 @@ cd ~/actions-runner
 
 Keep that Terminal window open until the workflow finishes.
 
+If this runner needs special egress to reach Google's Gemini endpoint, inject it at
+runner startup instead of hard-coding it in the repo workflow:
+
+```bash
+cd ~/actions-runner
+./svc.sh stop
+GEMINI_LIVE_PROXY_URL=http://127.0.0.1:7897 ./run.sh
+```
+
+If the runner has direct internet egress, leave `GEMINI_LIVE_PROXY_URL` unset.
+
 Suggested command flow for ordinary background jobs:
 
 ```bash
@@ -75,8 +86,10 @@ Add these repository or organization secrets before using
 Current workflow expectation:
 
 - `GEMINI_OFFICIAL_API_KEY` must be a working Google AI Studio key
-- the strict gate step now expects `GEMINI_LIVE_PROXY_URL=http://127.0.0.1:7897`
-  so the local Next dev server can reach Gemini token endpoints
+- `GEMINI_LIVE_PROXY_URL` is optional
+- if the runner needs special egress, provide `GEMINI_LIVE_PROXY_URL` via a
+  runner environment variable or a GitHub Actions repo variable/secret
+- if the runner or cloud deployment has direct egress, leave it unset
 
 ## First-Time Local Validation
 

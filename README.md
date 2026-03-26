@@ -78,6 +78,8 @@ Current operating note:
 - for the strict desktop real-mic gate, use a foreground runner session
   with `cd ~/actions-runner && ./run.sh`
 - stop the LaunchAgent runner first if it is active
+- only set `GEMINI_LIVE_PROXY_URL` when that runner actually needs special egress;
+  for cloud/direct egress leave it unset
 
 PR label helpers:
 
