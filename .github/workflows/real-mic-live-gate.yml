@@ -11,6 +11,14 @@ on:
         description: How long each round should keep recording before stopping
         required: false
         default: '8000'
+      forced_capture_status:
+        description: Optional diagnostic captureStatus override for manual failure visibility checks
+        required: false
+        default: ''
+      forced_capture_failure_stage:
+        description: Optional diagnostic captureFailureStage override for manual failure visibility checks
+        required: false
+        default: ''
   pull_request:
     types:
       - labeled
@@ -71,6 +79,8 @@ jobs:
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |
           GEMINI_LIVE_PROXY_URL="${GEMINI_LIVE_PROXY_URL:-${{ secrets.GEMINI_LIVE_PROXY_URL || vars.GEMINI_LIVE_PROXY_URL || '' }}}" \
+          FORCE_CAPTURE_STATUS='${{ github.event.inputs.forced_capture_status || '' }}' \
+          FORCE_CAPTURE_FAILURE_STAGE='${{ github.event.inputs.forced_capture_failure_stage || '' }}' \
           RUNS='${{ github.event.inputs.runs || '3' }}' \
           RECORDING_WAIT_MS='${{ github.event.inputs.recording_wait_ms || '8000' }}' \
           npm run smoke:live:real:strict
@@ -104,10 +114,10 @@ jobs:
               'console.log("| All Ordered | " + report.allOrdered + " |");' \
               'console.log("| All Aligned | " + report.allAligned + " |");' \
               'console.log("");' \
-              'console.log("| Round | Capture | Fallback | Delta Ms | Sample Rate |");' \
-              'console.log("| --- | --- | --- | --- | --- |");' \
+              'console.log("| Round | Capture | Stage | Fallback | Delta Ms | Sample Rate |");' \
+              'console.log("| --- | --- | --- | --- | --- | --- |");' \
               'for (const round of report.rounds) {' \
-              '  console.log("| " + round.roundId + " | " + round.captureStatus + " | " + round.fallbackActive + " | " + round.deltaMs + " | " + round.trackSampleRate + " |");' \
+              '  console.log("| " + round.roundId + " | " + round.captureStatus + " | " + (round.captureFailureStage || "") + " | " + round.fallbackActive + " | " + round.deltaMs + " | " + round.trackSampleRate + " |");' \
               '}' \
               'console.log("");' \
               'const failedRounds = report.rounds.filter((round) => round.captureStatus !== "complete" || round.fallbackActive);' \
@@ -116,6 +126,13 @@ jobs:
               '  console.log("");' \
               '  console.log("- `/tmp/speakonimage-real-mic-runs/report.json` for the gate verdict");' \
               '  console.log("- `/tmp/speakonimage-real-mic-runs/dev-server.log` for local server startup and token route issues");' \
+              '  for (const round of failedRounds) {' \
+              '    const details = ["- `" + round.roundId + "`", "status=`" + round.captureStatus + "`"];' \
+              '    if (round.captureFailureStage) details.push("stage=`" + round.captureFailureStage + "`");' \
+              '    if (round.captureFailureMessage) details.push("message=`" + String(round.captureFailureMessage).replace(/`/g, "\\`") + "`");' \
+              '    if (round.fallbackActive) details.push("fallback=`true`");' \
+              '    console.log(details.join(" "));' \
+              '  }' \
               '  for (const round of report.rounds) {' \
               '    console.log("- `" + round.logPath + "` for browser, console, and WebSocket details of " + round.roundId);' \
               '  }' \

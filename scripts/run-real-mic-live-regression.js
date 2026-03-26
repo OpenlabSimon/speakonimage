@@ -236,6 +236,9 @@ function evaluateStrictFailures(report) {
       if (round.captureFailureStage) {
         failures.push(`${round.roundId}: captureFailureStage=${round.captureFailureStage}`);
       }
+      if (round.captureFailureMessage) {
+        failures.push(`${round.roundId}: captureFailureMessage=${round.captureFailureMessage}`);
+      }
     }
     if (round.fallbackActive) {
       failures.push(`${round.roundId}: fallbackActive=true`);

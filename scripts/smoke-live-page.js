@@ -18,6 +18,29 @@ const REAL_MIC_TTS_TEXT = process.env.REAL_MIC_TTS_TEXT
 const REAL_MIC_TTS_VOICE = process.env.REAL_MIC_TTS_VOICE || 'Samantha';
 const REAL_MIC_TTS_RATE = Number(process.env.REAL_MIC_TTS_RATE || 175);
 const REAL_MIC_TTS_DELAY_MS = Number(process.env.REAL_MIC_TTS_DELAY_MS || 1500);
+const VALID_CAPTURE_FAILURE_STAGES = new Set([
+  'waiting_for_start_button',
+  'clicking_start_button',
+  'waiting_for_stop_button',
+  'playing_real_mic_prompt',
+  'clicking_stop_button',
+  'waiting_for_terminal_event',
+]);
+const DEFAULT_FAILURE_STAGE_BY_STATUS = {
+  complete: 'waiting_for_terminal_event',
+  connect_failed_before_start: 'waiting_for_start_button',
+  start_button_not_ready: 'waiting_for_start_button',
+  start_button_click_failed: 'clicking_start_button',
+  microphone_not_ready_after_start: 'waiting_for_stop_button',
+  recording_not_started_after_microphone_ready: 'waiting_for_stop_button',
+  audio_callback_not_started: 'waiting_for_stop_button',
+  recording_not_started_after_click: 'waiting_for_stop_button',
+  prompt_playback_failed: 'playing_real_mic_prompt',
+  stop_button_click_failed: 'clicking_stop_button',
+  timeout_waiting_for_terminal_event: 'waiting_for_terminal_event',
+};
+const FORCE_CAPTURE_STATUS = resolveForcedCaptureStatus();
+const FORCE_CAPTURE_FAILURE_STAGE = resolveForcedCaptureFailureStage();
 const host = new URL(BASE_URL).hostname;
 const cookieDomain = host.endsWith('dopling.ai') ? '.dopling.ai' : host;
 
@@ -231,6 +254,13 @@ async function main() {
   if (captureStatus === 'complete' && captureFailureMessage) {
     captureStatus = classifyCaptureFailure(captureFailureStage, diagnostics);
   }
+  if (FORCE_CAPTURE_STATUS) {
+    captureStatus = FORCE_CAPTURE_STATUS;
+    captureFailureStage = FORCE_CAPTURE_FAILURE_STAGE
+      || DEFAULT_FAILURE_STAGE_BY_STATUS[FORCE_CAPTURE_STATUS]
+      || captureFailureStage;
+    captureFailureMessage = captureFailureMessage || `forced_capture_status=${FORCE_CAPTURE_STATUS}`;
+  }
   const summary = summarizeDiagnostics(diagnostics);
   summary.captureStatus = captureStatus;
   summary.captureFailureStage = captureFailureStage;
@@ -338,6 +368,37 @@ function classifyCaptureFailure(stage, diagnostics) {
     default:
       return hasSetupComplete ? 'recording_not_started_after_click' : 'connect_failed_before_start';
   }
+}
+
+function resolveForcedCaptureStatus() {
+  const value = normalizeOptionalEnv(process.env.FORCE_CAPTURE_STATUS);
+  if (!value) {
+    return null;
+  }
+
+  if (!Object.hasOwn(DEFAULT_FAILURE_STAGE_BY_STATUS, value)) {
+    throw new Error(`Unsupported FORCE_CAPTURE_STATUS: ${value}`);
+  }
+
+  return value;
+}
+
+function resolveForcedCaptureFailureStage() {
+  const value = normalizeOptionalEnv(process.env.FORCE_CAPTURE_FAILURE_STAGE);
+  if (!value) {
+    return null;
+  }
+
+  if (!VALID_CAPTURE_FAILURE_STAGES.has(value)) {
+    throw new Error(`Unsupported FORCE_CAPTURE_FAILURE_STAGE: ${value}`);
+  }
+
+  return value;
+}
+
+function normalizeOptionalEnv(value) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed || null;
 }
 
 function tryParseJson(text) {
