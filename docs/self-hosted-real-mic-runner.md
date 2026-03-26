@@ -33,6 +33,37 @@ Recommended operational setup:
 - do not run overlapping real-mic workflows on the same machine
 - keep a normal desktop login session active while the workflow runs
 
+## Runner Mode Policy
+
+Current verified policy on this machine:
+
+- use foreground `./run.sh` for the strict desktop real-mic gate
+- stop `./svc.sh` service mode before triggering the real-mic gate
+- service mode may still be used for ordinary non-real-mic self-hosted jobs
+
+Why this policy exists:
+
+- service-runner verification `23589627994` reached token creation and WebSocket
+  setup, but the round still failed with `captureStatus = connect_failed_before_start`
+- foreground-runner verification `23589819471` completed with `success`
+
+Suggested command flow for the real-mic gate:
+
+```bash
+cd ~/actions-runner
+./svc.sh stop
+./run.sh
+```
+
+Keep that Terminal window open until the workflow finishes.
+
+Suggested command flow for ordinary background jobs:
+
+```bash
+cd ~/actions-runner
+./svc.sh start
+```
+
 ## Required Secrets
 
 Add these repository or organization secrets before using
@@ -40,6 +71,12 @@ Add these repository or organization secrets before using
 
 - `GEMINI_OFFICIAL_API_KEY`
 - `AUTH_SECRET`
+
+Current workflow expectation:
+
+- `GEMINI_OFFICIAL_API_KEY` must be a working Google AI Studio key
+- the strict gate step now expects `GEMINI_LIVE_PROXY_URL=http://127.0.0.1:7897`
+  so the local Next dev server can reach Gemini token endpoints
 
 ## First-Time Local Validation
 
@@ -178,6 +215,22 @@ Check:
 - `/tmp/speakonimage-real-mic-runs/dev-server.log`
 - the round log for WebSocket open vs token fetch
 - the machine's network egress to Google's Live endpoint
+
+If the logs show all of these:
+
+- `GET /api/live/health?probe=1 200`
+- `POST /api/live/token 200`
+- `setup_complete` in the round diagnostics
+
+but the round still ends with:
+
+- `captureStatus = connect_failed_before_start`
+- `audioProcessCallbacks = 0`
+- no `microphone_ready` event
+
+then treat it as a desktop-session or microphone-capture startup problem rather
+than a Gemini auth problem. On this machine, the verified workaround is to stop
+the LaunchAgent runner and rerun the gate from foreground `./run.sh`.
 
 ### `fallbackActive = true`
 

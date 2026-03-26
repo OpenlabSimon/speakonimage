@@ -73,6 +73,12 @@ Runner setup checklist:
 
 - [docs/self-hosted-real-mic-runner.md](/Users/huiliu/Projects/speakonimage/docs/self-hosted-real-mic-runner.md)
 
+Current operating note:
+
+- for the strict desktop real-mic gate, use a foreground runner session
+  with `cd ~/actions-runner && ./run.sh`
+- stop the LaunchAgent runner first if it is active
+
 PR label helpers:
 
 - `npm run pr:label:real-mic-gate -- <pr-number>`
