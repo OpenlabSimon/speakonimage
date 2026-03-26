@@ -94,6 +94,10 @@ function classifyLiveHealthError(message: string): 'network' | 'auth' | 'unknown
   if (
     normalized.includes('401') ||
     normalized.includes('403') ||
+    normalized.includes('api_key_invalid') ||
+    normalized.includes('api key not valid') ||
+    normalized.includes('invalid api key') ||
+    normalized.includes('pass a valid api key') ||
     normalized.includes('permission') ||
     normalized.includes('denied') ||
     normalized.includes('unauthorized')

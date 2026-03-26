@@ -68,6 +68,7 @@ jobs:
           NEXT_PUBLIC_ENABLE_GEMINI_LIVE: true
           AUTH_TRUST_HOST: true
           GEMINI_OFFICIAL_API_KEY: ${{ secrets.GEMINI_OFFICIAL_API_KEY }}
+          GEMINI_LIVE_PROXY_URL: http://127.0.0.1:7897
           GEMINI_LIVE_MODEL: gemini-2.5-flash-native-audio-preview-12-2025
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |

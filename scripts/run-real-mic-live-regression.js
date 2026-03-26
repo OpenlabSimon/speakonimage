@@ -239,6 +239,7 @@ function evaluateStrictFailures(report) {
 
 async function waitForLocalHealth(url, timeoutMs) {
   const startedAt = Date.now();
+  let lastError = null;
 
   while (Date.now() - startedAt < timeoutMs) {
     try {
@@ -248,14 +249,19 @@ async function waitForLocalHealth(url, timeoutMs) {
       if (response.ok) {
         return;
       }
+
+      const body = await response.text().catch(() => '');
+      lastError = `status=${response.status}${body ? ` body=${body}` : ''}`;
     } catch {
-      // ignore and retry
+      lastError = 'request_failed';
     }
 
     await delay(1000);
   }
 
-  throw new Error(`Timed out waiting for ${url}`);
+  throw new Error(
+    `Timed out waiting for ${url}${lastError ? ` (last_error: ${lastError})` : ''}`
+  );
 }
 
 function readDiagnostics(diagnosticsPath) {

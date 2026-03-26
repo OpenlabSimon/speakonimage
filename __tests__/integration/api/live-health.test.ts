@@ -60,4 +60,20 @@ describe('GET /api/live/health', () => {
     expect(data.data.stage).toBe('token_failed');
     expect(data.data.errorCode).toBe('network');
   });
+
+  it('classifies invalid api key probe failures as auth', async () => {
+    createGeminiEphemeralTokenMock.mockRejectedValue(
+      new Error(
+        'Gemini Live token failed: 400 - {"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}'
+      )
+    );
+
+    const response = await GET(makeRequest('http://localhost/api/live/health?probe=1'));
+    const data = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(data.success).toBe(false);
+    expect(data.data.stage).toBe('token_failed');
+    expect(data.data.errorCode).toBe('auth');
+  });
 });
