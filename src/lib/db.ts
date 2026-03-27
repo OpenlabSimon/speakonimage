@@ -50,7 +50,7 @@ function createPrismaClient() {
       void client.query(`SET search_path TO ${quotePgIdentifier(searchPath)}`);
     });
   }
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg(pool, searchPath ? { schema: searchPath } : undefined);
 
   return new PrismaClient({ adapter });
 }

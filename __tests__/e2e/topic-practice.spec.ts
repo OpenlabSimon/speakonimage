@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+const SEEDED_LEVEL_HISTORY = {
+  currentLevel: 'B1',
+  confidence: 0.6,
+  lastUpdated: '2026-03-27T00:00:00.000Z',
+  recentScores: [],
+  consecutiveFailures: 0,
+};
+
 test.describe('Topic Practice', () => {
   test.beforeEach(async ({ page }) => {
     // Try to login or continue as guest
@@ -64,6 +72,10 @@ test.describe('Topic Practice', () => {
   });
 
   test('starting a new anonymous topic clears legacy attempts and draft history', async ({ page }) => {
+    await page.addInitScript((levelHistory) => {
+      window.localStorage.setItem('speakonimage_level_history', JSON.stringify(levelHistory));
+    }, SEEDED_LEVEL_HISTORY);
+
     await page.goto('/');
 
     await page.evaluate(() => {
@@ -81,9 +93,7 @@ test.describe('Topic Practice', () => {
     await expect(input).toBeVisible({ timeout: 10000 });
     await input.fill('最近我在做一个 AI 口语学习产品');
 
-    const generateButton = page.locator('button').filter({ hasText: /生成|开始练习|开始/i }).first();
-    await expect(generateButton).toBeVisible({ timeout: 10000 });
-    await generateButton.click();
+    await page.getByRole('button', { name: 'Start chatting' }).click();
 
     await page.waitForURL(/\/topic\/practice/, { timeout: 15000 });
 

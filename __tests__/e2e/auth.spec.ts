@@ -1,61 +1,73 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+const TEST_PASSWORD = 'testpassword123';
+
+function createTestEmail(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
+async function registerWithEmail(page: Page, email: string) {
+  await page.goto('/auth/register');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(TEST_PASSWORD);
+  await page.locator('#confirmPassword').fill(TEST_PASSWORD);
+  await page.getByRole('button', { name: '创建账号' }).click();
+}
+
+async function loginWithEmail(page: Page, email: string) {
+  await page.goto('/auth/login');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(TEST_PASSWORD);
+  await page.getByRole('button', { name: '登录' }).click();
+}
 
 test.describe('Authentication', () => {
   test('register new account', async ({ page }) => {
-    await page.goto('/auth/register');
-    await page.fill('input[name="email"]', `test-${Date.now()}@example.com`);
-    await page.fill('input[name="password"]', 'testpassword123');
-    await page.click('button[type="submit"]');
+    const email = createTestEmail('register');
 
-    // Should redirect to home or topic page
-    await page.waitForURL(/\/(topic|$)/, { timeout: 10000 });
-    expect(page.url()).not.toContain('/auth/register');
+    await registerWithEmail(page, email);
+
+    await expect(page).toHaveURL('http://localhost:3000/', { timeout: 10000 });
   });
 
   test('login with credentials', async ({ page }) => {
-    await page.goto('/auth/login');
+    const email = createTestEmail('login');
 
-    // Fill login form
-    await page.fill('input[name="email"]', 'test@example.com');
-    await page.fill('input[name="password"]', 'testpassword123');
-    await page.click('button[type="submit"]');
+    await registerWithEmail(page, email);
+    await expect(page).toHaveURL('http://localhost:3000/', { timeout: 10000 });
 
-    // Wait for redirect (may fail if user doesn't exist - that's expected in clean env)
-    await page.waitForTimeout(2000);
+    await page.context().clearCookies();
+    await page.evaluate(() => {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    });
+
+    await loginWithEmail(page, email);
+
+    await expect(page).toHaveURL('http://localhost:3000/', { timeout: 10000 });
   });
 
   test('guest login', async ({ page }) => {
     await page.goto('/auth/login');
-
-    // Look for guest/anonymous login button
-    const guestButton = page.locator('text=游客').or(page.locator('text=Guest')).or(page.locator('text=试用'));
-    if (await guestButton.isVisible()) {
-      await guestButton.click();
-      await page.waitForURL(/\/(topic|$)/, { timeout: 10000 });
-    }
+    await page.getByRole('button', { name: '先看看 → 游客体验' }).click();
+    await expect(page).toHaveURL('http://localhost:3000/', { timeout: 10000 });
   });
 
   test('invalid login shows error', async ({ page }) => {
     await page.goto('/auth/login');
-    await page.fill('input[name="email"]', 'nonexistent@example.com');
-    await page.fill('input[name="password"]', 'wrongpassword');
-    await page.click('button[type="submit"]');
+    await page.locator('#email').fill('nonexistent@example.com');
+    await page.locator('#password').fill('wrongpassword');
+    await page.getByRole('button', { name: '登录' }).click();
 
-    // Should stay on login page or show error
-    await page.waitForTimeout(2000);
-    await page.locator('[role="alert"]').or(page.locator('.text-red')).or(page.locator('text=error')).isVisible().catch(() => false);
-    // Error should be visible or still on login page
-    expect(page.url()).toContain('/auth');
+    await expect(page).toHaveURL('http://localhost:3000/auth/login', { timeout: 10000 });
+    await expect(page.getByTestId('auth-form-error')).toContainText('邮箱或密码不正确');
   });
 
-  test('protected route redirects to login', async ({ page }) => {
-    // Clear cookies to ensure unauthenticated
+  test('profile renders in local mode without forced login', async ({ page }) => {
     await page.context().clearCookies();
-
     await page.goto('/profile');
-    await page.waitForTimeout(2000);
 
-    // Should be redirected to login
-    expect(page.url()).toContain('/auth/login');
+    await expect(page).toHaveURL('http://localhost:3000/profile', { timeout: 10000 });
+    await expect(page.getByText('当前是本地测试模式。这里优先展示最近会话和练习记录，不强制依赖登录。')).toBeVisible();
   });
 });

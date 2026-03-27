@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
+import { getCredentialsAuthErrorMessage } from '@/lib/auth/credentials-errors';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,7 +36,7 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError(result.error);
+        setError(getCredentialsAuthErrorMessage(result.error, result.code) || '登录失败，请重试');
       } else {
         router.push(getCallbackUrl());
         router.refresh();
@@ -171,7 +172,11 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div
+                role="alert"
+                data-testid="auth-form-error"
+                className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
+              >
                 {error}
               </div>
             )}

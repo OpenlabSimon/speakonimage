@@ -2,6 +2,11 @@ import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { compare, hash } from 'bcryptjs';
 import { prisma } from '@/lib/db';
+import {
+  ExistingUserError,
+  InvalidCredentialsError,
+  MissingCredentialsError,
+} from '@/lib/auth/credentials-errors';
 import { PrismaAdapter } from '@/lib/auth/adapter';
 import { authConfig } from './auth.config';
 
@@ -20,7 +25,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required');
+          throw new MissingCredentialsError();
         }
 
         const email = credentials.email as string;
@@ -33,7 +38,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           });
 
           if (existingUser) {
-            throw new Error('User already exists');
+            throw new ExistingUserError();
           }
 
           const hashedPassword = await hash(password, 12);
@@ -73,20 +78,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         });
 
         if (!user) {
-          throw new Error('Invalid email or password');
+          throw new InvalidCredentialsError();
         }
 
         const settings = user.settings as { password?: string } | null;
         const storedPassword = settings?.password;
 
         if (!storedPassword) {
-          throw new Error('Invalid email or password');
+          throw new InvalidCredentialsError();
         }
 
         const isValid = await compare(password, storedPassword);
 
         if (!isValid) {
-          throw new Error('Invalid email or password');
+          throw new InvalidCredentialsError();
         }
 
         return {
