@@ -24,7 +24,7 @@ test.describe('Profile Page', () => {
 
     if (page.url().includes('/profile')) {
       // Look for stats-related content
-      const hasStats = await page.locator('text=统计')
+      await page.locator('text=统计')
         .or(page.locator('text=Stats'))
         .or(page.locator('text=CEFR'))
         .or(page.locator('text=词汇'))

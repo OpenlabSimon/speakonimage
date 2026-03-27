@@ -6,7 +6,8 @@ import type {
 } from './types';
 
 export const DEFAULT_TEACHER_SOUL_ID: TeacherSoulId = 'default';
-export const DEFAULT_REVIEW_MODE: ReviewMode = 'text';
+export const DEFAULT_REVIEW_MODE: ReviewMode = 'all';
+export const DEFAULT_AUTO_PLAY_AUDIO = true;
 
 export function normalizeTeacherSelection(
   teacher?: Partial<TeacherSelection> | null
@@ -22,6 +23,6 @@ export function normalizeReviewPreference(
 ): ReviewPreference {
   return {
     mode: review?.mode ?? DEFAULT_REVIEW_MODE,
-    autoPlayAudio: review?.autoPlayAudio ?? false,
+    autoPlayAudio: review?.autoPlayAudio ?? DEFAULT_AUTO_PLAY_AUDIO,
   };
 }

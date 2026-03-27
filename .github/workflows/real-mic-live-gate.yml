@@ -1,0 +1,175 @@
+name: Real Mic Live Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of real-mic rounds to execute
+        required: false
+        default: '3'
+      recording_wait_ms:
+        description: How long each round should keep recording before stopping
+        required: false
+        default: '8000'
+      forced_capture_status:
+        description: Optional diagnostic captureStatus override for manual failure visibility checks
+        required: false
+        default: ''
+      forced_capture_failure_stage:
+        description: Optional diagnostic captureFailureStage override for manual failure visibility checks
+        required: false
+        default: ''
+  pull_request:
+    types:
+      - labeled
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - 'package.json'
+      - 'scripts/smoke-live-page.js'
+      - 'scripts/run-real-mic-live-regression.js'
+      - 'src/lib/live/**'
+      - 'src/components/input/GeminiLiveVoicePanel.tsx'
+
+concurrency:
+  group: real-mic-live-gate-${{ github.event.pull_request.number || github.ref_name || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  real-mic-live-gate:
+    # This gate requires a self-hosted macOS machine with:
+    # - headed Chrome available
+    # - real microphone permission
+    # - speaker playback for the macOS `say` prompt
+    # It is not intended for standard hosted CI runners.
+    # Setup checklist:
+    # docs/self-hosted-real-mic-runner.md
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 20
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.draft == false &&
+        contains(github.event.pull_request.labels.*.name, 'real-mic-gate')
+      )
+
+    steps:
+      - name: Reset gate artifact directory
+        run: rm -rf /tmp/speakonimage-real-mic-runs
+
+      - name: Checkout
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@v4
+
+      - name: Recover checkout after transient fetch failure
+        if: steps.checkout.outcome == 'failure'
+        run: |
+          git -C "$GITHUB_WORKSPACE" remote set-url origin "https://github.com/${GITHUB_REPOSITORY}"
+          git -C "$GITHUB_WORKSPACE" config --local gc.auto 0
+          if git -C "$GITHUB_WORKSPACE" rev-parse --verify "${GITHUB_SHA}^{commit}" >/dev/null 2>&1; then
+            git -C "$GITHUB_WORKSPACE" checkout --progress --force "$GITHUB_SHA"
+            git -C "$GITHUB_WORKSPACE" rev-parse HEAD
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            if git -C "$GITHUB_WORKSPACE" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin "$GITHUB_REF"; then
+              git -C "$GITHUB_WORKSPACE" checkout --progress --force FETCH_HEAD
+              git -C "$GITHUB_WORKSPACE" rev-parse HEAD
+              exit 0
+            fi
+
+            sleep $((attempt * 5))
+          done
+
+          exit 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run real-mic strict gate
+        env:
+          NEXT_PUBLIC_ENABLE_GEMINI_LIVE: true
+          AUTH_TRUST_HOST: true
+          GEMINI_OFFICIAL_API_KEY: ${{ secrets.GEMINI_OFFICIAL_API_KEY }}
+          GEMINI_LIVE_MODEL: gemini-2.5-flash-native-audio-preview-12-2025
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+        run: |
+          GEMINI_LIVE_PROXY_URL="${GEMINI_LIVE_PROXY_URL:-${{ secrets.GEMINI_LIVE_PROXY_URL || vars.GEMINI_LIVE_PROXY_URL || '' }}}" \
+          FORCE_CAPTURE_STATUS='${{ github.event.inputs.forced_capture_status || '' }}' \
+          FORCE_CAPTURE_FAILURE_STAGE='${{ github.event.inputs.forced_capture_failure_stage || '' }}' \
+          RUNS='${{ github.event.inputs.runs || '3' }}' \
+          RECORDING_WAIT_MS='${{ github.event.inputs.recording_wait_ms || '8000' }}' \
+          npm run smoke:live:real:strict
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-mic-live-gate
+          path: /tmp/speakonimage-real-mic-runs
+
+      - name: Publish gate summary
+        if: always()
+        run: |
+          echo "## Real-Mic Live Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Output directory: \`/tmp/speakonimage-real-mic-runs\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Primary report: \`/tmp/speakonimage-real-mic-runs/report.json\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dev server log: \`/tmp/speakonimage-real-mic-runs/dev-server.log\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f /tmp/speakonimage-real-mic-runs/report.json ]; then
+            printf '%s\n' \
+              'const fs = require("node:fs");' \
+              'const report = JSON.parse(fs.readFileSync("/tmp/speakonimage-real-mic-runs/report.json", "utf8"));' \
+              'console.log("| Metric | Value |");' \
+              'console.log("| --- | --- |");' \
+              'console.log("| Runs | " + report.runs + " |");' \
+              'console.log("| Completed Rounds | " + report.completedRounds + " |");' \
+              'console.log("| Max Delta Ms | " + report.maxDeltaMs + " |");' \
+              'console.log("| All Ordered | " + report.allOrdered + " |");' \
+              'console.log("| All Aligned | " + report.allAligned + " |");' \
+              'console.log("");' \
+              'console.log("| Round | Capture | Stage | Fallback | Delta Ms | Sample Rate |");' \
+              'console.log("| --- | --- | --- | --- | --- | --- |");' \
+              'for (const round of report.rounds) {' \
+              '  console.log("| " + round.roundId + " | " + round.captureStatus + " | " + (round.captureFailureStage || "") + " | " + round.fallbackActive + " | " + round.deltaMs + " | " + round.trackSampleRate + " |");' \
+              '}' \
+              'console.log("");' \
+              'const failedRounds = report.rounds.filter((round) => round.captureStatus !== "complete" || round.fallbackActive);' \
+              'if (failedRounds.length > 0 || !report.allOrdered || !report.allAligned) {' \
+              '  console.log("### Where To Look");' \
+              '  console.log("");' \
+              '  console.log("- `/tmp/speakonimage-real-mic-runs/report.json` for the gate verdict");' \
+              '  console.log("- `/tmp/speakonimage-real-mic-runs/dev-server.log` for local server startup and token route issues");' \
+              '  for (const round of failedRounds) {' \
+              '    const details = ["- `" + round.roundId + "`", "status=`" + round.captureStatus + "`"];' \
+              '    if (round.captureFailureStage) details.push("stage=`" + round.captureFailureStage + "`");' \
+              '    if (round.captureFailureMessage) details.push("message=`" + String(round.captureFailureMessage).replace(/`/g, "\\`") + "`");' \
+              '    if (round.fallbackActive) details.push("fallback=`true`");' \
+              '    console.log(details.join(" "));' \
+              '  }' \
+              '  for (const round of report.rounds) {' \
+              '    console.log("- `" + round.logPath + "` for browser, console, and WebSocket details of " + round.roundId);' \
+              '  }' \
+              '}' \
+              > "$RUNNER_TEMP/real-mic-summary.js"
+            node "$RUNNER_TEMP/real-mic-summary.js" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Missing Report" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- The workflow did not produce \`report.json\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "- Check \`/tmp/speakonimage-real-mic-runs/dev-server.log\` first." >> "$GITHUB_STEP_SUMMARY"
+          fi

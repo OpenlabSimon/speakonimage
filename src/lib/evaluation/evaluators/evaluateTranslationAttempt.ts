@@ -1,4 +1,5 @@
 import { getLLMProvider } from '@/lib/llm';
+import { resolveEvaluationModel } from '@/lib/llm/model-selection';
 import {
   TranslationEvaluationSchema,
   buildTranslationEvaluationPrompt,
@@ -9,7 +10,7 @@ import type { EvaluateParams, EvaluationOutput } from './types';
 export async function evaluateTranslationAttempt(
   params: EvaluateParams
 ): Promise<EvaluationOutput> {
-  const llm = getLLMProvider();
+  const llm = getLLMProvider('critical');
   const vocabWords = params.suggestedVocab.map((v) => v.word);
 
   const prompt = buildTranslationEvaluationPrompt(
@@ -27,6 +28,7 @@ export async function evaluateTranslationAttempt(
   return llm.generateJSON(
     prompt,
     TranslationEvaluationSchema,
-    getTranslationEvaluationSystemPrompt(params.inputMethod)
+    getTranslationEvaluationSystemPrompt(params.inputMethod),
+    { model: resolveEvaluationModel() }
   );
 }

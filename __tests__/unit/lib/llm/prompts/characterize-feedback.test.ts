@@ -17,19 +17,22 @@ describe('CharacterFeedbackSchema', () => {
   });
 
   it('rejects data with missing feedbackText', () => {
-    const { feedbackText: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.feedbackText;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing ttsText', () => {
-    const { ttsText: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.ttsText;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing mood', () => {
-    const { mood: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.mood;
     const result = CharacterFeedbackSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
@@ -96,6 +99,11 @@ describe('buildCharacterizeSystemPrompt', () => {
     expect(prompt).toContain('ttsText');
     expect(prompt).toContain('mood');
   });
+
+  it('explicitly forbids mentioning scores', () => {
+    const prompt = buildCharacterizeSystemPrompt('mei');
+    expect(prompt).toContain('不要提任何分数');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -104,16 +112,15 @@ describe('buildCharacterizeSystemPrompt', () => {
 
 describe('buildCharacterizeUserPrompt', () => {
   const baseParams = {
-    overallScore: 75,
     evaluation: { semanticAccuracy: { score: 80 }, grammar: { score: 70 } },
     userResponse: 'I met an old friend at the coffee shop.',
     topicType: 'translation',
     chinesePrompt: '昨天我在咖啡店遇到了一个老朋友',
   };
 
-  it('includes the overall score', () => {
+  it('does not include the overall score block', () => {
     const prompt = buildCharacterizeUserPrompt(baseParams);
-    expect(prompt).toContain('75');
+    expect(prompt).not.toContain('## 总分');
   });
 
   it('includes the user response', () => {
@@ -126,10 +133,10 @@ describe('buildCharacterizeUserPrompt', () => {
     expect(prompt).toContain(baseParams.chinesePrompt);
   });
 
-  it('includes the evaluation data as JSON', () => {
+  it('includes the evaluation data as JSON without numeric score fields', () => {
     const prompt = buildCharacterizeUserPrompt(baseParams);
     expect(prompt).toContain('semanticAccuracy');
-    expect(prompt).toContain('80');
+    expect(prompt).not.toContain('"score"');
   });
 
   it('labels translation topic type correctly', () => {

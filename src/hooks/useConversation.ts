@@ -27,11 +27,14 @@ interface ChatMessage {
 }
 
 interface MessageMetadata {
+  source?: 'full_review' | 'live_coach' | 'system';
   inputMethod?: 'voice' | 'text';
   audioUrl?: string;
+  kind?: 'coach_review' | 'evaluation_summary';
   overallScore?: number;
   estimatedCefr?: string;
   evaluationType?: 'translation' | 'expression';
+  ttsText?: string;
 }
 
 interface SessionExtractionResult {
@@ -74,6 +77,16 @@ interface UseConversationReturn {
   // Message actions
   addUserMessage: (content: string, metadata?: MessageMetadata) => Promise<ChatMessage | null>;
   addAssistantMessage: (content: string, metadata?: MessageMetadata) => Promise<ChatMessage | null>;
+  addUserMessageToSession: (
+    sessionId: string,
+    content: string,
+    metadata?: MessageMetadata
+  ) => Promise<ChatMessage | null>;
+  addAssistantMessageToSession: (
+    sessionId: string,
+    content: string,
+    metadata?: MessageMetadata
+  ) => Promise<ChatMessage | null>;
 
   // Utilities
   refreshMessages: () => Promise<void>;
@@ -126,7 +139,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, [options.topicId]);
+  }, [options.isAuthenticated, options.topicId]);
 
   /**
    * End the current session
@@ -156,29 +169,25 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [options.isAuthenticated]);
 
   /**
    * Add a message to the session
    */
-  const addMessage = useCallback(async (
+  const addMessageToSession = useCallback(async (
+    sessionId: string,
     role: 'user' | 'assistant',
     content: string,
     metadata?: MessageMetadata
   ): Promise<ChatMessage | null> => {
     if (options.isAuthenticated === false) return null;
-    if (!sessionRef.current) {
+    if (!sessionId) {
       setError('No active session');
       return null;
     }
 
-    if (sessionRef.current.status === 'ended') {
-      setError('Session has ended');
-      return null;
-    }
-
     try {
-      const response = await fetch(`/api/sessions/${sessionRef.current.id}/messages`, {
+      const response = await fetch(`/api/sessions/${sessionId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -196,10 +205,10 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
       }
 
       const newMessage = result.data as ChatMessage;
-      setMessages(prev => [...prev, newMessage]);
-
-      // Update session message count
-      setSession(prev => prev ? { ...prev, messageCount: prev.messageCount + 1 } : null);
+      if (sessionRef.current?.id === sessionId) {
+        setMessages(prev => [...prev, newMessage]);
+        setSession(prev => prev ? { ...prev, messageCount: prev.messageCount + 1 } : null);
+      }
 
       return newMessage;
     } catch (err) {
@@ -207,7 +216,26 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
       setError(message);
       return null;
     }
-  }, []);
+  }, [options.isAuthenticated]);
+
+  const addMessage = useCallback(async (
+    role: 'user' | 'assistant',
+    content: string,
+    metadata?: MessageMetadata
+  ): Promise<ChatMessage | null> => {
+    if (options.isAuthenticated === false) return null;
+    if (!sessionRef.current) {
+      setError('No active session');
+      return null;
+    }
+
+    if (sessionRef.current.status === 'ended') {
+      setError('Session has ended');
+      return null;
+    }
+
+    return addMessageToSession(sessionRef.current.id, role, content, metadata);
+  }, [addMessageToSession, options.isAuthenticated]);
 
   /**
    * Add a user message
@@ -228,6 +256,22 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
   ): Promise<ChatMessage | null> => {
     return addMessage('assistant', content, metadata);
   }, [addMessage]);
+
+  const addUserMessageToSession = useCallback(async (
+    sessionId: string,
+    content: string,
+    metadata?: MessageMetadata
+  ): Promise<ChatMessage | null> => {
+    return addMessageToSession(sessionId, 'user', content, metadata);
+  }, [addMessageToSession]);
+
+  const addAssistantMessageToSession = useCallback(async (
+    sessionId: string,
+    content: string,
+    metadata?: MessageMetadata
+  ): Promise<ChatMessage | null> => {
+    return addMessageToSession(sessionId, 'assistant', content, metadata);
+  }, [addMessageToSession]);
 
   /**
    * Refresh messages from the server
@@ -254,7 +298,7 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [options.isAuthenticated]);
 
   /**
    * Clear error state
@@ -282,6 +326,8 @@ export function useConversation(options: UseConversationOptions = {}): UseConver
     endSession,
     addUserMessage,
     addAssistantMessage,
+    addUserMessageToSession,
+    addAssistantMessageToSession,
     refreshMessages,
     clearError,
   };

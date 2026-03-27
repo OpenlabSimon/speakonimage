@@ -3,7 +3,9 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRecorder } from '@/hooks/useRecorder';
 import { convertToWav } from '@/lib/audio/convert';
+import { getApiErrorMessage, parseJsonResponse } from '@/lib/http/parse-json-response';
 import type { CEFRLevel } from '@/types';
+import type { DifficultySignal, SameTopicProgress } from '@/domains/runtime/round-orchestrator';
 import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 
 const MAX_DURATION_SECONDS = 180; // 3 minutes absolute max
@@ -32,9 +34,12 @@ interface VoiceRecorderProps {
     reviewMode?: ReviewMode;
     reviewAutoPlay?: boolean;
     reviewText?: string;
+    speechScript?: string;
     ttsText?: string;
     audioReview?: AudioReview;
     htmlArtifact?: HtmlArtifact;
+    sameTopicProgress?: SameTopicProgress | null;
+    difficultySignal?: DifficultySignal | null;
   }) => void;
   topicData: unknown;
   topicId?: string; // Database topic ID for persistence
@@ -45,6 +50,11 @@ interface VoiceRecorderProps {
   teacher?: TeacherSelection;
   reviewMode?: ReviewMode;
   autoPlayAudio?: boolean;
+  onProcessingChange?: (processing: boolean) => void;
+  historyAttempts?: Array<{
+    text: string;
+    score: number;
+  }>;
 }
 
 export function VoiceRecorder({
@@ -57,7 +67,9 @@ export function VoiceRecorder({
   cefrLevel,
   teacher,
   reviewMode = 'text',
-  autoPlayAudio = false,
+  autoPlayAudio = true,
+  onProcessingChange,
+  historyAttempts = [],
 }: VoiceRecorderProps) {
   const suggestedDuration = getSuggestedDuration(cefrLevel);
   const pendingAutoStopBlobRef = useRef<Blob | null>(null);
@@ -105,6 +117,11 @@ export function VoiceRecorder({
 
   // Handle recording toggle
   const handleToggleRecording = async () => {
+    if (disabled || processing) {
+      onError?.('上一轮老师点评与语音仍在生成，请等待完成后再提交。');
+      return;
+    }
+
     if (isRecording) {
       const blob = await stopRecording();
       if (blob) {
@@ -121,6 +138,11 @@ export function VoiceRecorder({
 
   // Submit voice for transcription + evaluation in one step
   const handleSubmitVoice = async (blob: Blob) => {
+    if (disabled || processing) {
+      onError?.('上一轮老师点评与语音仍在生成，请等待完成后再提交。');
+      return;
+    }
+
     if (blob.size > MAX_AUDIO_SIZE_BYTES) {
       const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
       setApiError(`音频文件过大 (${sizeMB}MB)，请缩短录音时间`);
@@ -129,6 +151,7 @@ export function VoiceRecorder({
     }
 
     setProcessing(true);
+    onProcessingChange?.(true);
     setApiError(null);
     setProcessingStep('转换音频...');
 
@@ -149,7 +172,13 @@ export function VoiceRecorder({
 
       const formData = new FormData();
       formData.append('audio', audioToSend);
-      formData.append('topicData', JSON.stringify(topicData));
+      formData.append(
+        'topicData',
+        JSON.stringify({
+          ...(typeof topicData === 'object' && topicData ? topicData : {}),
+          historyAttempts,
+        })
+      );
       if (topicId) {
         formData.append('topicId', topicId);
       }
@@ -170,10 +199,30 @@ export function VoiceRecorder({
         body: formData,
       });
 
-      const result = await response.json();
+      const parsed = await parseJsonResponse<{
+        success?: boolean;
+        error?: string;
+        data?: {
+          status?: string;
+          transcription: string;
+          audioUrl?: string;
+          evaluation?: unknown;
+          overallScore?: number;
+          teacher?: TeacherSelection;
+          review?: { mode?: ReviewMode; autoPlayAudio?: boolean };
+          reviewText?: string;
+          speechScript?: string;
+          ttsText?: string;
+          audioReview?: AudioReview;
+          htmlArtifact?: HtmlArtifact;
+          sameTopicProgress?: SameTopicProgress | null;
+          difficultySignal?: DifficultySignal | null;
+        };
+      }>(response);
+      const result = parsed.data;
       console.log('Voice API response:', result);
 
-      if (result.success) {
+      if (parsed.ok && result?.success && result.data) {
         if (result.data.status === 'no_match') {
           setApiError('未检测到语音，请重试。');
           onError?.('未检测到语音，请重试。');
@@ -193,12 +242,15 @@ export function VoiceRecorder({
           reviewMode: result.data.review?.mode,
           reviewAutoPlay: result.data.review?.autoPlayAudio,
           reviewText: result.data.reviewText,
-          ttsText: result.data.ttsText,
+          speechScript: result.data.speechScript ?? result.data.ttsText,
+          ttsText: result.data.ttsText ?? result.data.speechScript,
           audioReview: result.data.audioReview,
           htmlArtifact: result.data.htmlArtifact,
+          sameTopicProgress: result.data.sameTopicProgress,
+          difficultySignal: result.data.difficultySignal,
         });
       } else {
-        const errorMsg = result.error || '语音提交失败';
+        const errorMsg = getApiErrorMessage(parsed, '语音提交失败');
         setApiError(errorMsg);
         onError?.(errorMsg);
       }
@@ -209,6 +261,7 @@ export function VoiceRecorder({
       onError?.(errorMsg);
     } finally {
       setProcessing(false);
+      onProcessingChange?.(false);
       setProcessingStep('');
     }
   };
@@ -243,18 +296,18 @@ export function VoiceRecorder({
   return (
     <div className="flex flex-col gap-4">
       {/* Recording Controls */}
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
         <button
           onClick={handleToggleRecording}
-          disabled={disabled || processing}
+          disabled={disabled}
           className={`
-            w-20 h-20 rounded-full flex items-center justify-center
+            flex h-24 w-24 items-center justify-center rounded-full
             transition-all duration-200 text-white font-medium shadow-lg
             ${isRecording
               ? 'bg-red-500 hover:bg-red-600 animate-pulse'
               : 'bg-blue-500 hover:bg-blue-600'
             }
-            ${(disabled || processing) ? 'opacity-50 cursor-not-allowed' : ''}
+            ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
           `}
         >
           {isRecording ? (
@@ -267,7 +320,7 @@ export function VoiceRecorder({
         </button>
 
         {isRecording && (
-          <div className="text-xl font-mono min-w-[60px]">
+          <div className="min-w-[72px] text-center font-mono text-xl">
             <span className={pastSuggested ? 'text-orange-600' : 'text-red-600'}>
               {formatDuration(remaining)}
             </span>
@@ -301,7 +354,7 @@ export function VoiceRecorder({
         {processing && (
           <span className="flex items-center justify-center gap-2">
             <span className="animate-spin">⏳</span>
-            {processingStep || '处理中...'}
+            {processingStep || '正在生成老师点评与语音...'}
           </span>
         )}
         {state === 'idle' && !audioBlob && !processing && !transcription && (
@@ -332,7 +385,7 @@ export function VoiceRecorder({
         <div className="flex justify-center">
           <button
             onClick={handleReRecord}
-            className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
+            className="min-h-11 w-full rounded-lg bg-gray-200 px-4 py-2 text-sm transition-colors hover:bg-gray-300 sm:w-auto"
           >
             重新录音
           </button>

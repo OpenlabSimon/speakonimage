@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../../mocks/prisma';
-import { mockCheckAuth, setAuthenticated, setUnauthenticated, resetAuthMock } from '../../mocks/auth';
+import { mockCheckAuth, setUnauthenticated, resetAuthMock } from '../../mocks/auth';
 import { mockLLMProvider, resetLLMMock } from '../../mocks/llm';
 import translationEval from '../../mocks/fixtures/evaluation-translation.json';
 
@@ -41,6 +41,11 @@ function makeFormData(overrides: Record<string, string | Blob> = {}): FormData {
     chinesePrompt: '测试',
     keyPoints: ['test'],
     suggestedVocab: [{ word: 'test' }],
+    difficultyMetadata: {
+      targetCefr: 'B1',
+      vocabComplexity: 2,
+      grammarComplexity: 2,
+    },
   }));
   for (const [key, value] of Object.entries(overrides)) {
     formData.set(key, value);
@@ -70,7 +75,25 @@ describe('POST /api/submissions/voice', () => {
 
     const request = new NextRequest('http://localhost/api/submissions/voice', {
       method: 'POST',
-      body: makeFormData(),
+      body: makeFormData({
+        topicData: JSON.stringify({
+          type: 'translation',
+          chinesePrompt: '测试',
+          keyPoints: ['test'],
+          suggestedVocab: [{ word: 'test' }],
+          difficultyMetadata: {
+            targetCefr: 'B1',
+            vocabComplexity: 2,
+            grammarComplexity: 2,
+          },
+          historyAttempts: [
+            {
+              text: 'Hello test',
+              score: 68,
+            },
+          ],
+        }),
+      }),
     });
 
     const response = await POST(request);
@@ -81,6 +104,17 @@ describe('POST /api/submissions/voice', () => {
     expect(data.data.transcription).toBe('Hello world');
     expect(data.data.evaluation).toBeDefined();
     expect(data.data.inputMethod).toBe('voice');
+    expect(data.data.audioReview.status).toBe('pending');
+    expect(data.data.audioReview.audioUrl).toBeUndefined();
+    expect(data.data.sameTopicProgress).toMatchObject({
+      attemptCount: 2,
+      deltaFromLast: data.data.overallScore - 68,
+    });
+    expect(data.data.difficultySignal).toEqual({
+      targetCefr: 'B1',
+      baselineCefr: 'B1',
+      relation: 'matched',
+    });
   });
 
   it('returns 400 when no audio provided', async () => {

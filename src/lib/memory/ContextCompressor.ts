@@ -1,6 +1,7 @@
 // ContextCompressor - compress long conversations into summaries
 
 import { getLLMProvider } from '@/lib/llm';
+import { resolveBackgroundLLMModel } from '@/lib/llm/model-selection';
 import { z } from 'zod';
 import type { ChatMessage } from './types';
 
@@ -77,7 +78,12 @@ ${formattedMessages}
 提取关键信息供后续对话参考。保持摘要简洁但信息完整。`;
 
   try {
-    const result = await llm.generateJSON(prompt, CompressionResultSchema, systemPrompt);
+    const result = await llm.generateJSON(
+      prompt,
+      CompressionResultSchema,
+      systemPrompt,
+      { model: resolveBackgroundLLMModel() }
+    );
     return result;
   } catch (error) {
     console.error('Context compression failed:', error);

@@ -117,6 +117,7 @@ export function useLevelHistory() {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as LevelHistory;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setHistory(parsed);
       }
     } catch (error) {

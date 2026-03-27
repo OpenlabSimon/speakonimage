@@ -1,4 +1,4 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+SpeakOnImage is a Next.js app for AI-assisted English speaking practice, with invite-only beta support for early external testing.
 
 ## Getting Started
 
@@ -14,23 +14,86 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000` with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+For beta deployment details, see [docs/deploy-beta.md](/Users/huiliu/Projects/speakonimage/docs/deploy-beta.md).
+
+## Real-Mic Release Gate
+
+Use this before shipping Gemini Live changes that affect desktop Chrome microphone behavior:
+
+```bash
+cd /Users/huiliu/Projects/speakonimage
+RUNS=3 npm run smoke:live:real:strict
+```
+
+This gate is intended for a real desktop macOS session with:
+
+- headed Chrome
+- real `getUserMedia` microphone access
+- system speaker playback for the prompt
+
+Passing output should include:
+
+- `completedRounds = runs`
+- `allOrdered = true`
+- `allAligned = true`
+- each round with `captureStatus = complete`
+- each round with `fallbackActive = false`
+
+Artifacts are written to:
+
+- `/tmp/speakonimage-real-mic-runs/report.json`
+- `/tmp/speakonimage-real-mic-runs/dev-server.log`
+
+For the full Gemini Live local workflow, see [docs/gemini-live-beta.md](/Users/huiliu/Projects/speakonimage/docs/gemini-live-beta.md).
+
+## CI Entry
+
+If you want to wire this into GitHub Actions, use a self-hosted macOS runner only.
+Hosted CI runners are not a reliable target for this real-microphone gate.
+
+A ready-to-run workflow is provided at
+[real-mic-live-gate.yml](/Users/huiliu/Projects/speakonimage/.github/workflows/real-mic-live-gate.yml).
+
+Each workflow run also writes a short GitHub Actions summary with the gate verdict,
+per-round status, and the first files to inspect on failure.
+
+Automatic CI runs are intentionally restricted:
+
+- manual `workflow_dispatch`
+- PRs labeled `real-mic-gate`
+
+Required GitHub Actions secrets:
+
+- `GEMINI_OFFICIAL_API_KEY`
+- `AUTH_SECRET`
+
+Runner setup checklist:
+
+- [docs/self-hosted-real-mic-runner.md](/Users/huiliu/Projects/speakonimage/docs/self-hosted-real-mic-runner.md)
+
+Current operating note:
+
+- for the strict desktop real-mic gate, use a foreground runner session
+  with `cd ~/actions-runner && ./run.sh`
+- stop the LaunchAgent runner first if it is active
+- only set `GEMINI_LIVE_PROXY_URL` when that runner actually needs special egress;
+  for cloud/direct egress leave it unset
+
+PR label helpers:
+
+- `npm run pr:label:real-mic-gate -- <pr-number>`
+- `npm run pr:unlabel:real-mic-gate -- <pr-number>`
+
+PR template:
+
+- [pull_request_template.md](/Users/huiliu/Projects/speakonimage/.github/pull_request_template.md)
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+## Beta Launch
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Invite access page: `/beta/access`
+- Direct invite links: `/invite/<token>`
+- Recommended production host: `https://www.dopling.ai`

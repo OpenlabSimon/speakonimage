@@ -10,7 +10,7 @@ export function PracticeGameButton({ onClick, isLoading }: PracticeGameButtonPro
     <button
       onClick={onClick}
       disabled={isLoading}
-      className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl font-medium hover:from-purple-600 hover:to-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 py-3 font-medium text-white transition-all hover:from-purple-600 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {isLoading ? (
         <>

@@ -3,6 +3,7 @@ import { prismaMock, resetPrismaMock } from '../../mocks/prisma';
 import { mockLLMProvider, resetLLMMock } from '../../mocks/llm';
 import translationEval from '../../mocks/fixtures/evaluation-translation.json';
 import expressionEval from '../../mocks/fixtures/evaluation-expression.json';
+import type { EvaluationOutput } from '@/lib/evaluation/evaluators/types';
 
 vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/llm', () => ({
@@ -76,7 +77,7 @@ describe('persistSubmission', () => {
       accountId: 'user-1',
       inputMethod: 'text',
       userResponse: 'I have meet my friend at the coffee shop.',
-      evaluation: translationEval as any,
+      evaluation: translationEval as EvaluationOutput,
       overallScore: 85,
       topicType: 'translation',
       suggestedVocab: [{ word: 'meet' }],
@@ -104,7 +105,7 @@ describe('persistSubmission', () => {
       accountId: 'user-1',
       inputMethod: 'text',
       userResponse: 'Test response',
-      evaluation: translationEval as any,
+      evaluation: translationEval as EvaluationOutput,
       overallScore: 85,
       topicType: 'translation',
       suggestedVocab: [],
@@ -117,13 +118,13 @@ describe('persistSubmission', () => {
 
 describe('calculateOverallScore', () => {
   it('calculates translation score with correct weights', () => {
-    const score = calculateOverallScore(translationEval as any);
+    const score = calculateOverallScore(translationEval as EvaluationOutput);
     const expected = Math.round(85 * 0.4 + 78 * 0.2 + 90 * 0.2 + 82 * 0.2);
     expect(score).toBe(expected);
   });
 
   it('calculates expression score with equal weights', () => {
-    const score = calculateOverallScore(expressionEval as any);
+    const score = calculateOverallScore(expressionEval as EvaluationOutput);
     const expected = Math.round(88 * 0.25 + 75 * 0.25 + 70 * 0.25 + 80 * 0.25);
     expect(score).toBe(expected);
   });

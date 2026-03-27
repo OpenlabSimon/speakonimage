@@ -61,8 +61,8 @@ describe('GET/PATCH /api/user/coach-preferences', () => {
         password: 'hashed-password',
         theme: 'warm',
         coachPreferences: {
-          reviewMode: 'text',
-          autoPlayAudio: false,
+          reviewMode: 'all',
+          autoPlayAudio: true,
           characterId: 'mei',
         },
       },

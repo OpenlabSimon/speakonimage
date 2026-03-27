@@ -26,6 +26,11 @@ const CoachingRoundRequestSchema = z.object({
       pattern: z.string(),
       example: z.string(),
     })).optional(),
+    difficultyMetadata: z.object({
+      targetCefr: z.string(),
+      vocabComplexity: z.number().optional(),
+      grammarComplexity: z.number().optional(),
+    }).optional(),
   }),
   userResponse: z.string().min(1),
   inputMethod: z.enum(['text', 'voice']),
@@ -108,6 +113,7 @@ export async function POST(request: NextRequest) {
         topicId,
         sessionId,
       },
+      deferAudioReview: true,
     });
 
     return NextResponse.json<ApiResponse<typeof round>>({

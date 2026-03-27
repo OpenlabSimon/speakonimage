@@ -2,17 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
-import { getLLMProvider } from '@/lib/llm';
+import {
+  getLLMProvider,
+} from '@/lib/llm';
+import {
+  resolveFastLLMModel,
+  resolveTopicGenerationModel,
+} from '@/lib/llm/model-selection';
 import {
   TranslationTopicSchema,
   ExpressionTopicSchema,
   TopicGenerationSchema,
-  buildTopicPrompt,
-  getSystemPromptForType,
-  buildUnifiedPrompt,
   UNIFIED_SYSTEM_PROMPT,
+  buildTopicPrompt,
+  buildUnifiedPrompt,
+  getSystemPromptForType,
   type TopicGenerationOutput,
 } from '@/lib/llm/prompts/topic-generate';
+import { buildTopicPersonalizationContext } from '@/lib/profile/memory';
 import type { ApiResponse } from '@/types';
 
 // Request body schema
@@ -38,26 +45,47 @@ export async function POST(request: NextRequest) {
 
     // Get authenticated user (optional - topics can be generated without auth)
     const user = await getCurrentUser();
+    const speaker = user?.id
+      ? await prisma.speaker.findFirst({
+          where: { accountId: user.id },
+          orderBy: { createdAt: 'asc' },
+          select: { languageProfile: true },
+        })
+      : null;
+    const profileContext = buildTopicPersonalizationContext(speaker?.languageProfile);
 
     // Get LLM provider
-    const llm = getLLMProvider();
+    const llm = getLLMProvider('critical');
 
     // Build prompt and get schema based on topic type
+    const topicModel = resolveTopicGenerationModel();
     let topicData: TopicGenerationOutput;
 
-    if (type) {
-      // Explicit type: use type-specific prompt and schema
-      const prompt = buildTopicPrompt(type, text, targetCefr);
-      const systemPrompt = getSystemPromptForType(type);
-      if (type === 'translation') {
-        topicData = await llm.generateJSON(prompt, TranslationTopicSchema, systemPrompt);
-      } else {
-        topicData = await llm.generateJSON(prompt, ExpressionTopicSchema, systemPrompt);
-      }
+    if (!type) {
+      topicData = await llm.generateJSON(
+        buildUnifiedPrompt(text, targetCefr, profileContext || undefined),
+        TopicGenerationSchema,
+        UNIFIED_SYSTEM_PROMPT,
+        { model: resolveFastLLMModel() }
+      );
+    } else if (type === 'translation') {
+      topicData = await llm.generateJSON(
+        buildTopicPrompt(type, text, targetCefr, profileContext || undefined),
+        TranslationTopicSchema,
+        getSystemPromptForType(type),
+        {
+          model: topicModel,
+        }
+      );
     } else {
-      // No type: unified prompt, LLM auto-detects type
-      const prompt = buildUnifiedPrompt(text, targetCefr);
-      topicData = await llm.generateJSON(prompt, TopicGenerationSchema, UNIFIED_SYSTEM_PROMPT);
+      topicData = await llm.generateJSON(
+        buildTopicPrompt(type, text, targetCefr, profileContext || undefined),
+        ExpressionTopicSchema,
+        getSystemPromptForType(type),
+        {
+          model: topicModel,
+        }
+      );
     }
 
     // If user is authenticated, save topic to database

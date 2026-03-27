@@ -1,13 +1,14 @@
 import {
   buildTranslationPrompt,
   buildExpressionPrompt,
-  buildUnifiedPrompt,
+  buildTopicClassificationPrompt,
   buildTopicPrompt,
   getSchemaForType,
   getSystemPromptForType,
   TranslationTopicSchema,
   ExpressionTopicSchema,
   TopicGenerationSchema,
+  TopicClassificationSchema,
   TRANSLATION_SYSTEM_PROMPT,
   EXPRESSION_SYSTEM_PROMPT,
 } from '@/lib/llm/prompts/topic-generate';
@@ -48,19 +49,19 @@ describe('buildExpressionPrompt', () => {
   });
 });
 
-describe('buildUnifiedPrompt', () => {
+describe('buildTopicClassificationPrompt', () => {
   it('includes the user input text', () => {
-    const prompt = buildUnifiedPrompt('如果明天下雨');
+    const prompt = buildTopicClassificationPrompt('如果明天下雨');
     expect(prompt).toContain('如果明天下雨');
   });
 
   it('includes the target CEFR level', () => {
-    const prompt = buildUnifiedPrompt('如果明天下雨', 'A2');
+    const prompt = buildTopicClassificationPrompt('如果明天下雨', 'A2');
     expect(prompt).toContain('A2');
   });
 
   it('defaults to B1 when no CEFR level is provided', () => {
-    const prompt = buildUnifiedPrompt('some topic');
+    const prompt = buildTopicClassificationPrompt('some topic');
     expect(prompt).toContain('B1');
   });
 });
@@ -91,6 +92,23 @@ describe('getSchemaForType', () => {
   });
 });
 
+describe('TopicClassificationSchema', () => {
+  it('validates a well-formed classification result', () => {
+    const result = TopicClassificationSchema.safeParse({
+      type: 'translation',
+      reason: '完整句子',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid type values', () => {
+    const result = TopicClassificationSchema.safeParse({
+      type: 'other',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('getSystemPromptForType', () => {
   it('returns the translation system prompt for translation', () => {
     expect(getSystemPromptForType('translation')).toBe(TRANSLATION_SYSTEM_PROMPT);
@@ -108,13 +126,15 @@ describe('TranslationTopicSchema', () => {
   });
 
   it('rejects data with missing chinesePrompt', () => {
-    const { chinesePrompt: _, ...incomplete } = translationFixture;
+    const incomplete = { ...translationFixture };
+    delete incomplete.chinesePrompt;
     const result = TranslationTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing keyPoints', () => {
-    const { keyPoints: _, ...incomplete } = translationFixture;
+    const incomplete = { ...translationFixture };
+    delete incomplete.keyPoints;
     const result = TranslationTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
@@ -127,7 +147,7 @@ describe('TranslationTopicSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects vocabComplexity outside 0-1 range', () => {
+  it('clamps vocabComplexity outside 0-1 range', () => {
     const result = TranslationTopicSchema.safeParse({
       ...translationFixture,
       difficultyMetadata: {
@@ -135,7 +155,36 @@ describe('TranslationTopicSchema', () => {
         vocabComplexity: 1.5,
       },
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(1);
+  });
+
+  it('accepts numeric strings for difficultyMetadata scores', () => {
+    const result = TranslationTopicSchema.safeParse({
+      ...translationFixture,
+      difficultyMetadata: {
+        ...translationFixture.difficultyMetadata,
+        vocabComplexity: '0.5',
+        grammarComplexity: '0.4',
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(0.5);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0.4);
+  });
+
+  it('falls back to 0.5 when difficultyMetadata scores are non-numeric strings', () => {
+    const result = TranslationTopicSchema.safeParse({
+      ...translationFixture,
+      difficultyMetadata: {
+        ...translationFixture.difficultyMetadata,
+        vocabComplexity: 'medium',
+        grammarComplexity: 'hard',
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.vocabComplexity).toBe(0.5);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0.5);
   });
 
   it('rejects an invalid CEFR difficulty value', () => {
@@ -154,13 +203,15 @@ describe('ExpressionTopicSchema', () => {
   });
 
   it('rejects data with missing guidingQuestions', () => {
-    const { guidingQuestions: _, ...incomplete } = expressionFixture;
+    const incomplete = { ...expressionFixture };
+    delete incomplete.guidingQuestions;
     const result = ExpressionTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing grammarHints', () => {
-    const { grammarHints: _, ...incomplete } = expressionFixture;
+    const incomplete = { ...expressionFixture };
+    delete incomplete.grammarHints;
     const result = ExpressionTopicSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
@@ -173,7 +224,7 @@ describe('ExpressionTopicSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects grammarComplexity outside 0-1 range', () => {
+  it('clamps grammarComplexity outside 0-1 range', () => {
     const result = ExpressionTopicSchema.safeParse({
       ...expressionFixture,
       difficultyMetadata: {
@@ -181,7 +232,8 @@ describe('ExpressionTopicSchema', () => {
         grammarComplexity: -0.1,
       },
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.difficultyMetadata.grammarComplexity).toBe(0);
   });
 });
 

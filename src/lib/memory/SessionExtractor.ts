@@ -1,14 +1,16 @@
 // SessionExtractor - extract learning data from completed sessions
 
 import { getLLMProvider } from '@/lib/llm';
+import { resolveBackgroundLLMModel } from '@/lib/llm/model-selection';
 import { prisma } from '@/lib/db';
 import {
   SessionExtractionSchema,
   SESSION_EXTRACTION_SYSTEM_PROMPT,
   buildSessionExtractionPrompt,
-  type SessionExtractionResult,
 } from '@/lib/llm/prompts/extract-session';
 import type { ChatSession, ChatMessage, SessionExtractionResult as TypedExtractionResult } from './types';
+import { mergeSessionSignalsIntoProfile } from '@/lib/profile/memory';
+import { computeAndUpdateProfile } from '@/lib/profile/ProfileManager';
 
 /**
  * Extract learning data from session messages
@@ -58,7 +60,8 @@ export async function extractSessionLearningData(
     const result = await llm.generateJSON(
       prompt,
       SessionExtractionSchema,
-      SESSION_EXTRACTION_SYSTEM_PROMPT
+      SESSION_EXTRACTION_SYSTEM_PROMPT,
+      { model: resolveBackgroundLLMModel() }
     );
 
     // Map result to typed extraction, casting flexible LLM strings to strict types
@@ -210,10 +213,37 @@ export async function processSessionEnd(sessionId: string): Promise<TypedExtract
 
   // Save extracted data to tracking tables
   if (session.speakerId) {
+    const [speaker, topic] = await Promise.all([
+      prisma.speaker.findUnique({
+        where: { id: session.speakerId },
+        select: { languageProfile: true },
+      }),
+      session.topicId
+        ? prisma.topic.findUnique({
+            where: { id: session.topicId },
+            select: { originalInput: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
     await Promise.all([
       saveExtractedErrors(session, extraction),
       saveExtractedVocabulary(session, extraction),
+      prisma.speaker.update({
+        where: { id: session.speakerId },
+        data: {
+          languageProfile: mergeSessionSignalsIntoProfile({
+            existingProfile: speaker?.languageProfile,
+            extraction,
+            messages,
+            topicInput: topic?.originalInput,
+          }) as object,
+          lastActiveAt: new Date(),
+        },
+      }),
     ]);
+
+    await computeAndUpdateProfile(session.speakerId);
   }
 
   return extraction;

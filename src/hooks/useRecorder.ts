@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export type RecordingState = 'idle' | 'recording' | 'processing';
 
@@ -25,7 +25,10 @@ export interface UseRecorderResult {
 export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
   const { maxDurationSeconds, onAutoStop } = options || {};
   const onAutoStopRef = useRef(onAutoStop);
-  onAutoStopRef.current = onAutoStop;
+
+  useEffect(() => {
+    onAutoStopRef.current = onAutoStop;
+  }, [onAutoStop]);
   const [state, setState] = useState<RecordingState>('idle');
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -42,6 +45,23 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
   const isSupported = typeof window !== 'undefined' &&
     navigator.mediaDevices &&
     typeof MediaRecorder !== 'undefined';
+
+  const resolveMimeType = useCallback((): string | undefined => {
+    if (typeof MediaRecorder === 'undefined') {
+      return undefined;
+    }
+
+    const candidates = [
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/mp4',
+      'audio/aac',
+      'audio/ogg;codecs=opus',
+      'audio/webm;codecs=opus',
+      'audio/webm',
+    ];
+
+    return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  }, []);
 
   const startRecording = useCallback(async () => {
     if (!isSupported) {
@@ -65,19 +85,12 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
 
       streamRef.current = stream;
 
-      // Try different formats in order of Azure compatibility
-      // ogg/opus seems to work better with Azure than webm/opus
-      let mimeType = 'audio/webm';
-      if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-        mimeType = 'audio/ogg;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        mimeType = 'audio/webm;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/webm';
-      }
-      console.log('Recording with mimeType:', mimeType);
+      const mimeType = resolveMimeType();
+      console.log('Recording with mimeType:', mimeType || 'browser-default');
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -148,7 +161,7 @@ export function useRecorder(options?: UseRecorderOptions): UseRecorderResult {
         setError('Failed to start recording');
       }
     }
-  }, [isSupported, maxDurationSeconds]);
+  }, [isSupported, maxDurationSeconds, resolveMimeType]);
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
     return new Promise((resolve) => {

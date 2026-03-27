@@ -15,7 +15,7 @@ test.describe('Review Page', () => {
     await page.waitForTimeout(3000);
 
     // Should show either review items or "no items" message
-    const hasContent = await page.locator('[data-testid="review-card"]')
+    await page.locator('[data-testid="review-card"]')
       .or(page.locator('text=没有'))
       .or(page.locator('text=No items'))
       .or(page.locator('text=完成'))

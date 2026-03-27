@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../../mocks/prisma';
-import { mockAuth, setAuthenticated, setUnauthenticated, resetAuthMock } from '../../mocks/auth';
+import { mockAuth, setAuthenticated, resetAuthMock } from '../../mocks/auth';
 
 vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/auth', () => ({

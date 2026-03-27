@@ -1,16 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { ScoreOverview } from './ScoreOverview';
+import { GrowthOverview } from './GrowthOverview';
 import { SemanticFeedback } from './SemanticFeedback';
 import { GrammarErrors } from './GrammarErrors';
 import { Suggestions } from './Suggestions';
 import { HistoryComparison } from './HistoryComparison';
-import { CharacterFeedback } from './CharacterFeedback';
 import { PracticeGameButton } from './PracticeGameButton';
 import { CoachReviewPanel } from './CoachReviewPanel';
+import type { DifficultySignal, SameTopicProgress } from '@/domains/runtime/round-orchestrator';
 import type { TranslationEvaluationScores, ExpressionEvaluationScores, GrammarErrorItem } from '@/types';
-import type { TeacherCharacterId } from '@/lib/characters/types';
 import type { AudioReview, HtmlArtifact, ReviewMode, TeacherSelection } from '@/domains/teachers/types';
 
 type EvaluationData = TranslationEvaluationScores | ExpressionEvaluationScores;
@@ -24,26 +23,24 @@ interface AttemptData {
 
 interface EvaluationResultProps {
   evaluation: EvaluationData;
-  overallScore: number;
   userResponse: string;
   attempts?: AttemptData[];
   currentAttempt?: number;
   onRetry: () => void;
   onNext: () => void;
+  isNextLoading?: boolean;
   onPracticeGame?: () => void;
   isPracticeGameLoading?: boolean;
-  characterId?: TeacherCharacterId;
-  topicType?: string;
-  chinesePrompt?: string;
-  inputMethod?: 'voice' | 'text';
   coachReview?: {
     teacher: TeacherSelection;
     reviewMode: ReviewMode;
     autoPlayAudio: boolean;
     reviewText: string;
-    ttsText: string;
+    speechScript: string;
     audioReview: AudioReview;
     htmlArtifact: HtmlArtifact;
+    sameTopicProgress?: SameTopicProgress | null;
+    difficultySignal?: DifficultySignal | null;
   };
 }
 
@@ -51,18 +48,14 @@ type TabType = 'overview' | 'feedback' | 'grammar' | 'improve' | 'history';
 
 export function EvaluationResult({
   evaluation,
-  overallScore,
   userResponse,
   attempts = [],
   currentAttempt = 1,
   onRetry,
   onNext,
+  isNextLoading = false,
   onPracticeGame,
   isPracticeGameLoading,
-  characterId,
-  topicType,
-  chinesePrompt,
-  inputMethod,
   coachReview,
 }: EvaluationResultProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -74,10 +67,10 @@ export function EvaluationResult({
 
   // Define tabs
   const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'overview', label: '分数', icon: '📊' },
-    { id: 'feedback', label: '详情', icon: '📝' },
-    { id: 'grammar', label: '语法', icon: '✏️' },
-    { id: 'improve', label: '改进', icon: '💡' },
+    { id: 'overview', label: '成长', icon: '🌱' },
+    { id: 'feedback', label: '细看', icon: '📝' },
+    { id: 'grammar', label: '纠错', icon: '✏️' },
+    { id: 'improve', label: '下一步', icon: '💡' },
   ];
 
   // Add history tab if there are multiple attempts
@@ -93,25 +86,14 @@ export function EvaluationResult({
         reviewMode={coachReview.reviewMode}
         autoPlayAudio={coachReview.autoPlayAudio}
         reviewText={coachReview.reviewText}
-        ttsText={coachReview.ttsText}
+        speechScript={coachReview.speechScript}
         audioReview={coachReview.audioReview}
         htmlArtifact={coachReview.htmlArtifact}
+        sameTopicProgress={coachReview.sameTopicProgress}
+        difficultySignal={coachReview.difficultySignal}
         onRetry={onRetry}
       />
     )}
-    {/* Character Feedback (async, loads independently) */}
-    {characterId && topicType && chinesePrompt && (
-      <CharacterFeedback
-        characterId={characterId}
-        overallScore={overallScore}
-        evaluation={evaluation}
-        userResponse={userResponse}
-        topicType={topicType}
-        chinesePrompt={chinesePrompt}
-        inputMethod={inputMethod}
-      />
-    )}
-
     <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
       {/* User Response Summary */}
       <div className="bg-gray-50 px-4 py-3 border-b">
@@ -125,7 +107,7 @@ export function EvaluationResult({
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`flex-1 min-w-[80px] py-3 px-2 text-sm font-medium transition-colors whitespace-nowrap ${
+            className={`min-h-11 flex-1 whitespace-nowrap px-3 py-3 text-sm font-medium transition-colors min-w-[88px] ${
               activeTab === id
                 ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50'
                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -140,7 +122,11 @@ export function EvaluationResult({
       {/* Tab Content */}
       <div className="p-4 max-h-[60vh] overflow-y-auto">
         {activeTab === 'overview' && (
-          <ScoreOverview evaluation={evaluation} overallScore={overallScore} />
+          <GrowthOverview
+            evaluation={evaluation}
+            sameTopicProgress={coachReview?.sameTopicProgress}
+            difficultySignal={coachReview?.difficultySignal}
+          />
         )}
 
         {activeTab === 'feedback' && (
@@ -164,24 +150,25 @@ export function EvaluationResult({
       </div>
 
       {/* Action Buttons */}
-      <div className="p-4 bg-gray-50 border-t space-y-3">
+      <div className="sticky bottom-0 z-10 space-y-3 border-t bg-gray-50/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-gray-50/85">
         {onPracticeGame && (
           <PracticeGameButton onClick={onPracticeGame} isLoading={isPracticeGameLoading} />
         )}
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <button
             onClick={onRetry}
-            className="flex-1 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white py-3 font-medium text-gray-700 transition-colors hover:bg-gray-50"
           >
             <span>🔄</span>
             再试一次
           </button>
           <button
             onClick={onNext}
-            className="flex-1 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 transition-colors flex items-center justify-center gap-2"
+            disabled={isNextLoading}
+            className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-blue-500 py-3 font-medium text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             <span>➡️</span>
-            下一个话题
+            {isNextLoading ? '准备下一题...' : '练这题'}
           </button>
         </div>
       </div>

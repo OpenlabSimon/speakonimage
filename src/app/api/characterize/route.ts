@@ -9,7 +9,6 @@ import {
 
 interface CharacterizeRequest {
   characterId: string;
-  overallScore: number;
   evaluation: Record<string, unknown>;
   userResponse: string;
   topicType: string;
@@ -20,7 +19,7 @@ interface CharacterizeRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: CharacterizeRequest = await request.json();
-    const { characterId, overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod } = body;
+    const { characterId, evaluation, userResponse, topicType, chinesePrompt, inputMethod } = body;
 
     // Validate required fields
     if (!characterId || !isValidCharacterId(characterId)) {
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (overallScore === undefined || !evaluation || !userResponse || !topicType || !chinesePrompt) {
+    if (!evaluation || !userResponse || !topicType || !chinesePrompt) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -41,7 +40,6 @@ export async function POST(request: NextRequest) {
 
     const systemPrompt = buildCharacterizeSystemPrompt(characterId);
     const userPrompt = buildCharacterizeUserPrompt({
-      overallScore,
       evaluation,
       userResponse,
       topicType,

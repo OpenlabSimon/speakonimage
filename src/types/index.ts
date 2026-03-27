@@ -257,6 +257,111 @@ export interface LanguageProfile {
     preferredStructures: string[];
     creativityScoreAvg: number;
   };
+  usageProfile?: {
+    snapshots: Array<{
+      key: 'latest_attempt' | 'rolling_30m' | 'daily';
+      label: string;
+      sampleCount: number;
+      strengths: string[];
+      weaknesses: string[];
+      preferredVocabulary: string[];
+      avoidVocabulary: string[];
+      preferredExpressions: string[];
+      avoidGrammarPatterns: string[];
+      updatedAt: string;
+    }>;
+  };
+  interests?: Array<{
+    key: string;
+    label: string;
+    source: 'topic_input' | 'session_topic' | 'submission' | 'coach_review' | 'manual';
+    strength: number;
+    evidenceCount: number;
+    lastSeenAt: string;
+  }>;
+  goals?: Array<{
+    key: string;
+    label: string;
+    strength: number;
+    lastSeenAt: string;
+  }>;
+  entities?: Array<{
+    key: string;
+    label: string;
+    type: 'product' | 'tool' | 'company' | 'person' | 'topic';
+    strength: number;
+    lastSeenAt: string;
+  }>;
+  recentVocabulary?: Array<{
+    word: string;
+    context: string;
+    mastery: 'new' | 'developing' | 'mastered';
+    cefrLevel?: CEFRLevel;
+    lastSeenAt: string;
+  }>;
+  memorySnippets?: Array<{
+    id: string;
+    kind: 'user_output' | 'coach_feedback';
+    summary: string;
+    createdAt: string;
+    tags: string[];
+  }>;
+  coachMemory?: {
+    longTermReminders: Array<{
+      id: string;
+      scope: 'long_term';
+      text: string;
+      source: 'coach_review' | 'goal' | 'grammar_pattern';
+      createdAt: string;
+      relatedPatterns: string[];
+    }>;
+    currentRoundReminders: Array<{
+      id: string;
+      scope: 'current_round';
+      text: string;
+      source: 'coach_review' | 'goal' | 'grammar_pattern';
+      createdAt: string;
+      relatedPatterns: string[];
+    }>;
+  };
+  recommendations?: {
+    topics: Array<{
+      id: string;
+      kind: 'topic';
+      title: string;
+      detail: string;
+      reason: string;
+      relatedInterestKeys: string[];
+    }>;
+    vocabulary: Array<{
+      id: string;
+      kind: 'vocabulary';
+      title: string;
+      detail: string;
+      reason: string;
+      relatedInterestKeys: string[];
+    }>;
+    examples: Array<{
+      id: string;
+      kind: 'example';
+      title: string;
+      detail: string;
+      reason: string;
+      relatedInterestKeys: string[];
+    }>;
+    nextFocus: string[];
+    generatedAt: string;
+  };
+  recommendationFeedback?: Array<{
+    id: string;
+    recommendationId: string;
+    recommendationKind: 'topic' | 'vocabulary' | 'example';
+    recommendationTitle: string;
+    sentiment: 'helpful' | 'too_easy' | 'too_hard' | 'good_direction_not_now' | 'off_topic';
+    relatedInterestKeys: string[];
+    createdAt: string;
+  }>;
+  hiddenInterestKeys?: string[];
 }
 
 // ============================================

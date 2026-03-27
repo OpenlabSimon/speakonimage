@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeAudio } from '@/lib/speech/azure-stt';
+import { getSpeechTranscriptionAvailability } from '@/lib/speech/transcription-config';
 import type { ApiResponse } from '@/types';
 
 // Extend TranscriptionResult type for API response
@@ -8,6 +9,25 @@ interface TranscribeResponse {
   confidence?: number;
   duration?: number;
   status: 'success' | 'no_match' | 'error';
+}
+
+interface TranscribeCapabilityResponse {
+  available: boolean;
+  provider: 'azure' | null;
+  reason: string | null;
+}
+
+export async function GET() {
+  const availability = getSpeechTranscriptionAvailability();
+
+  return NextResponse.json<ApiResponse<TranscribeCapabilityResponse>>({
+    success: true,
+    data: {
+      available: availability.available,
+      provider: availability.provider,
+      reason: availability.reason,
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -22,14 +42,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get Azure credentials from environment
-    const speechKey = process.env.AZURE_SPEECH_KEY;
-    const speechRegion = process.env.AZURE_SPEECH_REGION;
-
-    if (!speechKey || !speechRegion) {
+    const availability = getSpeechTranscriptionAvailability();
+    if (!availability.available || !availability.speechKey || !availability.speechRegion) {
       return NextResponse.json<ApiResponse<null>>(
-        { success: false, error: 'Azure Speech credentials not configured' },
-        { status: 500 }
+        { success: false, error: availability.reason || '语音转写不可用' },
+        { status: 503 }
       );
     }
 
@@ -39,8 +56,8 @@ export async function POST(request: NextRequest) {
 
     // Transcribe using Azure STT
     const result = await transcribeAudio(audioBlob, {
-      speechKey,
-      speechRegion,
+      speechKey: availability.speechKey,
+      speechRegion: availability.speechRegion,
       language: 'en-US',
     });
 

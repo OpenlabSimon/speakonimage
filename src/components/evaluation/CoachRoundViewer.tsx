@@ -78,9 +78,6 @@ export function CoachRoundViewer({
             Coach Round Viewer
           </div>
           <div className="flex flex-wrap gap-2 mb-3">
-            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
-              分数: {round.overallScore}/100
-            </span>
             <span className="px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-xs font-medium">
               输入: {round.inputMethod}
             </span>
@@ -119,7 +116,7 @@ export function CoachRoundViewer({
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-sm font-medium text-gray-900">
-                      {item.teacher.soulId} · {item.overallScore}/100
+                      {item.teacher.soulId}
                     </div>
                     <div className="text-xs text-gray-400">
                       {new Date(item.createdAt).toLocaleString()}
@@ -170,9 +167,11 @@ export function CoachRoundViewer({
           reviewMode={round.reviewMode}
           autoPlayAudio={round.autoPlayAudio}
           reviewText={round.reviewText}
-          ttsText={round.ttsText}
+          speechScript={round.speechScript}
           audioReview={round.audioReview}
           htmlArtifact={round.htmlArtifact}
+          sameTopicProgress={round.sameTopicProgress}
+          difficultySignal={round.difficultySignal}
           standaloneMode
         />
       </div>

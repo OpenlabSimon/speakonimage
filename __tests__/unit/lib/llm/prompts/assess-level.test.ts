@@ -15,19 +15,22 @@ describe('IntroductionAssessmentSchema', () => {
   });
 
   it('rejects data with missing estimatedLevel', () => {
-    const { estimatedLevel: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.estimatedLevel;
     const result = IntroductionAssessmentSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing confidence', () => {
-    const { confidence: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.confidence;
     const result = IntroductionAssessmentSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });
 
   it('rejects data with missing analysis', () => {
-    const { analysis: _, ...incomplete } = fixture;
+    const incomplete = { ...fixture };
+    delete incomplete.analysis;
     const result = IntroductionAssessmentSchema.safeParse(incomplete);
     expect(result.success).toBe(false);
   });

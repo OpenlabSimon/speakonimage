@@ -17,17 +17,11 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
     return null;
   }
 
-  const currentScore = attempts.find(a => a.attemptNumber === currentAttempt)?.overallScore || 0;
   const previousAttempt = attempts.find(a => a.attemptNumber === currentAttempt - 1);
 
-  const scoreDiff = previousAttempt ? currentScore - previousAttempt.overallScore : 0;
-
   const getTrendIcon = () => {
-    if (scoreDiff > 5) return { icon: '📈', text: '进步很大！', color: 'text-green-600' };
-    if (scoreDiff > 0) return { icon: '↗️', text: '越来越好！', color: 'text-green-600' };
-    if (scoreDiff === 0) return { icon: '➡️', text: '水平持平', color: 'text-yellow-600' };
-    if (scoreDiff > -5) return { icon: '↘️', text: '略有下降', color: 'text-orange-600' };
-    return { icon: '📉', text: '继续加油！', color: 'text-red-600' };
+    if (!previousAttempt) return { icon: '➡️', text: '从这一版开始建立自己的练习轨迹', color: 'text-yellow-600' };
+    return { icon: '🔁', text: '把这一版和上一版放在一起看，重点是有没有修掉刚才的问题', color: 'text-green-600' };
   };
 
   const trend = getTrendIcon();
@@ -41,19 +35,15 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
       <div className="p-4">
         {/* Score comparison */}
         {previousAttempt && (
-          <div className="flex items-center justify-center gap-4 mb-4 py-3 bg-gray-50 rounded-lg">
+          <div className="mb-4 flex flex-col items-center justify-center gap-3 rounded-lg bg-gray-50 py-3 sm:flex-row sm:gap-4">
             <div className="text-center">
-              <div className="text-xs text-gray-500">上次</div>
-              <div className="text-2xl font-bold text-gray-400">{previousAttempt.overallScore}</div>
+              <div className="text-xs text-gray-500">上一版</div>
+              <div className="text-base font-semibold text-gray-500">第 {previousAttempt.attemptNumber} 次</div>
             </div>
             <div className="text-2xl">{trend.icon}</div>
             <div className="text-center">
-              <div className="text-xs text-gray-500">这次</div>
-              <div className="text-2xl font-bold text-blue-600">{currentScore}</div>
-            </div>
-            <div className={`text-sm font-medium ${trend.color}`}>
-              {scoreDiff > 0 && '+'}
-              {scoreDiff}
+              <div className="text-xs text-gray-500">这一版</div>
+              <div className="text-base font-semibold text-blue-600">第 {currentAttempt} 次</div>
             </div>
           </div>
         )}
@@ -84,11 +74,10 @@ export function HistoryComparison({ attempts, currentAttempt }: HistoryCompariso
               <div className="flex-1 text-sm text-gray-600 truncate">
                 {attempt.text.substring(0, 50)}...
               </div>
-              <div className={`font-medium ${
-                attempt.overallScore >= 80 ? 'text-green-600' :
-                attempt.overallScore >= 60 ? 'text-yellow-600' : 'text-red-600'
+              <div className={`text-xs font-medium ${
+                attempt.attemptNumber === currentAttempt ? 'text-blue-600' : 'text-gray-500'
               }`}>
-                {attempt.overallScore}
+                {attempt.attemptNumber === currentAttempt ? '当前版本' : '历史版本'}
               </div>
             </div>
           ))}

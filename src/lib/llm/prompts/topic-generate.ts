@@ -19,10 +19,31 @@ const GrammarHintSchema = z.object({
   example: z.string().describe('Example sentence using this pattern'),
 });
 
+const DifficultyScoreSchema = z
+  .preprocess((value) => {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      if (!normalized) return undefined;
+
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }, z.number().optional())
+  .transform((value) => {
+    const normalized = value ?? 0.5;
+    return Math.min(1, Math.max(0, normalized));
+  });
+
 const DifficultyMetadataSchema = z.object({
   targetCefr: z.enum(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']),
-  vocabComplexity: z.number().min(0).max(1),
-  grammarComplexity: z.number().min(0).max(1),
+  vocabComplexity: DifficultyScoreSchema,
+  grammarComplexity: DifficultyScoreSchema,
 });
 
 // ============================================
@@ -57,9 +78,15 @@ export const TopicGenerationSchema = z.discriminatedUnion('type', [
   ExpressionTopicSchema,
 ]);
 
+export const TopicClassificationSchema = z.object({
+  type: z.enum(['translation', 'expression']),
+  reason: z.string().optional(),
+});
+
 export type TopicGenerationOutput = z.infer<typeof TopicGenerationSchema>;
 export type TranslationTopicOutput = z.infer<typeof TranslationTopicSchema>;
 export type ExpressionTopicOutput = z.infer<typeof ExpressionTopicSchema>;
+export type TopicClassificationOutput = z.infer<typeof TopicClassificationSchema>;
 
 // ============================================
 // System Prompts
@@ -119,17 +146,45 @@ export const UNIFIED_SYSTEM_PROMPT = `你是一位专业的英语教师，正在
 
 请始终返回符合schema的有效JSON。type字段必须是 "translation" 或 "expression"。`;
 
+export const TOPIC_CLASSIFICATION_SYSTEM_PROMPT = `你是一位英语练习题型判断器。
+
+任务只有一个：根据用户输入判断它更适合：
+- translation：完整中文句子/段落，适合中译英
+- expression：关键词、主题、学习目标、场景，适合开放表达
+
+不需要生成题目，不需要补充内容。只返回 JSON。`;
+
+export function buildTopicClassificationPrompt(
+  userInput: string,
+  targetCefr: string = 'B1',
+  profileContext?: string
+): string {
+  return `判断以下输入更适合哪种练习题型。
+
+用户输入: "${userInput}"
+目标CEFR等级: ${targetCefr}
+${profileContext ? `用户画像线索: ${profileContext}\n` : ''}
+
+返回:
+{
+  "type": "translation" | "expression",
+  "reason": "一句很短的判断理由"
+}`;
+}
+
 /**
  * Build prompt for unified (auto-detect) mode
  */
 export function buildUnifiedPrompt(
   userInput: string,
-  targetCefr: string = 'B1'
+  targetCefr: string = 'B1',
+  profileContext?: string
 ): string {
   return `根据以下用户输入，自动判断合适的练习类型并生成题目：
 
 用户输入: "${userInput}"
 目标CEFR等级: ${targetCefr}
+${profileContext ? `\n用户长期画像与推荐线索:\n${profileContext}\n` : ''}
 
 请先判断输入类型：
 - 如果是完整的中文句子/段落 → type: "translation"
@@ -166,12 +221,14 @@ export function buildUnifiedPrompt(
  */
 export function buildTranslationPrompt(
   userInput: string,
-  targetCefr: string = 'B1'
+  targetCefr: string = 'B1',
+  profileContext?: string
 ): string {
   return `根据以下输入，生成一道中译英翻译挑战题：
 
 用户输入: "${userInput}"
 目标CEFR等级: ${targetCefr}
+${profileContext ? `\n用户长期画像与推荐线索:\n${profileContext}\n` : ''}
 
 生成JSON格式的题目，包含：
 1. type: "translation"
@@ -198,12 +255,14 @@ export function buildTranslationPrompt(
  */
 export function buildExpressionPrompt(
   userInput: string,
-  targetCefr: string = 'B1'
+  targetCefr: string = 'B1',
+  profileContext?: string
 ): string {
   return `根据以下输入，生成一道话题表达练习题：
 
 用户输入: "${userInput}"
 目标CEFR等级: ${targetCefr}
+${profileContext ? `\n用户长期画像与推荐线索:\n${profileContext}\n` : ''}
 
 生成JSON格式的题目，包含：
 1. type: "expression"
@@ -249,9 +308,10 @@ export function getSystemPromptForType(type: 'translation' | 'expression') {
 export function buildTopicPrompt(
   type: 'translation' | 'expression',
   userInput: string,
-  targetCefr: string = 'B1'
+  targetCefr: string = 'B1',
+  profileContext?: string
 ): string {
   return type === 'translation'
-    ? buildTranslationPrompt(userInput, targetCefr)
-    : buildExpressionPrompt(userInput, targetCefr);
+    ? buildTranslationPrompt(userInput, targetCefr, profileContext)
+    : buildExpressionPrompt(userInput, targetCefr, profileContext);
 }

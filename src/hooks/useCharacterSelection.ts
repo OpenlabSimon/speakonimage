@@ -15,6 +15,7 @@ export function useCharacterSelection() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored && isValidCharacterId(stored)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCharacterIdState(stored);
       }
     } catch {

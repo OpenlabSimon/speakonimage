@@ -1,6 +1,78 @@
 // ProfileInjector - builds profile context string for LLM prompt injection
 
 import { prisma } from '@/lib/db';
+import { getPersistedProfileSignals } from './memory';
+
+function compactList(values: string[], limit: number): string[] {
+  return values
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter((value) => value.length > 0)
+    .slice(0, limit);
+}
+
+function compactText(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function buildStructuredProfileContext(input: {
+  estimatedCefr?: string;
+  interests: string[];
+  goals: string[];
+  errorPatterns: Array<{ pattern: string; count: number }>;
+  weakVocabulary: string[];
+  recentUserMemory?: string | null;
+  recentCoachMemory?: string | null;
+  currentRoundReminders: string[];
+}): string | null {
+  const sections: string[] = [];
+
+  if (input.estimatedCefr) {
+    sections.push(`level=${input.estimatedCefr}`);
+  }
+
+  const interests = compactList(input.interests, 3);
+  if (interests.length > 0) {
+    sections.push(`interests=${interests.join('|')}`);
+  }
+
+  const goals = compactList(input.goals, 3);
+  if (goals.length > 0) {
+    sections.push(`goals=${goals.join('|')}`);
+  }
+
+  const errorPatterns = input.errorPatterns
+    .slice(0, 4)
+    .map((item) => `${item.pattern}(${item.count})`);
+  if (errorPatterns.length > 0) {
+    sections.push(`errors=${errorPatterns.join('|')}`);
+  }
+
+  const weakVocabulary = compactList(input.weakVocabulary, 6);
+  if (weakVocabulary.length > 0) {
+    sections.push(`weak_vocab=${weakVocabulary.join('|')}`);
+  }
+
+  if (input.recentUserMemory) {
+    sections.push(`recent_user=${compactText(input.recentUserMemory, 80)}`);
+  }
+
+  if (input.recentCoachMemory) {
+    sections.push(`recent_coach=${compactText(input.recentCoachMemory, 80)}`);
+  }
+
+  const currentRoundReminders = compactList(input.currentRoundReminders, 2);
+  if (currentRoundReminders.length > 0) {
+    sections.push(`round_focus=${currentRoundReminders.map((item) => compactText(item, 48)).join('|')}`);
+  }
+
+  if (sections.length === 0) {
+    return null;
+  }
+
+  return `PROFILE{${sections.join('; ')}}`;
+}
 
 /**
  * Build a Chinese-language profile context string for injection into evaluation prompts.
@@ -18,7 +90,7 @@ export async function buildProfileContext(speakerId: string): Promise<string | n
       where: { speakerId },
       _count: { errorPattern: true },
       orderBy: { _count: { errorPattern: 'desc' } },
-      take: 10,
+      take: 4,
     }),
     prisma.vocabularyUsage.findMany({
       where: {
@@ -27,73 +99,43 @@ export async function buildProfileContext(speakerId: string): Promise<string | n
       },
       select: { word: true },
       distinct: ['word'],
-      take: 15,
+      take: 6,
     }),
   ]);
 
   if (!speaker) return null;
 
   const profile = speaker.languageProfile as Record<string, unknown> | null;
-
-  // Fetch recent examples for all error patterns in parallel
-  const errorExamples = await Promise.all(
-    grammarErrors.map(async (err) => {
-      const example = await prisma.grammarError.findFirst({
-        where: { speakerId, errorPattern: err.errorPattern },
-        orderBy: { createdAt: 'desc' },
-        select: { originalText: true, correctedText: true },
-      });
-      return {
-        pattern: err.errorPattern,
-        count: err._count.errorPattern,
-        original: example?.originalText || undefined,
-        corrected: example?.correctedText || undefined,
-      };
-    })
-  );
+  const persistedSignals = getPersistedProfileSignals(profile);
+  const errorPatterns = grammarErrors.map((err) => ({
+    pattern: err.errorPattern,
+    count: err._count.errorPattern,
+  }));
 
   // If no data at all, return null
-  if (errorExamples.length === 0 && weakVocab.length === 0 && !profile) {
+  if (errorPatterns.length === 0 && weakVocab.length === 0 && !profile) {
     return null;
   }
-
-  // Build the context string
-  const sections: string[] = [];
 
   // Current level from profile
   const estimatedCefr = profile?.estimatedCefr as string | undefined;
-  const interests = (profile?.interests as string[]) || [];
-
-  if (estimatedCefr || interests.length > 0) {
-    const levelLine = estimatedCefr ? `- 英语水平：${estimatedCefr}` : '';
-    const interestLine = interests.length > 0
-      ? `- 感兴趣的话题：${interests.join('、')}`
-      : '';
-    sections.push(
-      [levelLine, interestLine].filter(Boolean).join('\n')
-    );
-  }
-
-  // Grammar errors section
-  if (errorExamples.length > 0) {
-    const errorLines = errorExamples.map(e => {
-      if (e.original && e.corrected) {
-        return `- ${e.pattern}："${e.original}" → "${e.corrected}"（${e.count}次）`;
-      }
-      return `- ${e.pattern}（${e.count}次）`;
-    });
-    sections.push(`常犯错误：\n${errorLines.join('\n')}`);
-  }
-
-  // Weak vocabulary section
-  if (weakVocab.length > 0) {
-    const words = weakVocab.map(v => v.word).join(', ');
-    sections.push(`薄弱词汇：${words}`);
-  }
-
-  if (sections.length === 0) {
-    return null;
-  }
-
-  return `## 学生档案\n${sections.join('\n\n')}`;
+  const interests = persistedSignals.interests.map((item) => item.label);
+  const goals = persistedSignals.goals.map((item) => item.label);
+  const recentCoachMemory = persistedSignals.memorySnippets.find((item) => item.kind === 'coach_feedback');
+  const recentUserMemory = persistedSignals.memorySnippets.find((item) => item.kind === 'user_output');
+  const currentRoundReminders = persistedSignals.currentRoundReminders.map((item) => item.text);
+  return buildStructuredProfileContext({
+    estimatedCefr,
+    interests,
+    goals,
+    errorPatterns,
+    weakVocabulary: weakVocab.map((item) => item.word),
+    recentUserMemory: recentUserMemory?.summary,
+    recentCoachMemory: recentCoachMemory?.summary,
+    currentRoundReminders,
+  });
 }
+
+export const __test__ = {
+  buildStructuredProfileContext,
+};

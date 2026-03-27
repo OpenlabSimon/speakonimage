@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
+
 interface Submission {
   id: string;
   transcribedText: string;
+  rawAudioUrl?: string | null;
   evaluation: Record<string, unknown>;
   difficultyAssessment: { overallScore?: number } | null;
   createdAt: string;
@@ -14,6 +17,24 @@ interface RecentActivityProps {
 }
 
 export function RecentActivity({ submissions }: RecentActivityProps) {
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const visibleSubmissions = showAll ? submissions : submissions.slice(0, 1);
+
+  const handlePlayUserAudio = async (submission: Submission) => {
+    if (!submission.rawAudioUrl) return;
+
+    const audio = new Audio(submission.rawAudioUrl);
+    setPlayingAudioId(submission.id);
+    audio.onended = () => setPlayingAudioId(null);
+    audio.onerror = () => setPlayingAudioId(null);
+    try {
+      await audio.play();
+    } catch {
+      setPlayingAudioId(null);
+    }
+  };
+
   if (submissions.length === 0) {
     return (
       <div className="text-center py-6 text-gray-500 text-sm">
@@ -24,8 +45,7 @@ export function RecentActivity({ submissions }: RecentActivityProps) {
 
   return (
     <div className="space-y-3">
-      {submissions.map((sub) => {
-        const score = sub.difficultyAssessment?.overallScore;
+      {visibleSubmissions.map((sub) => {
         const date = new Date(sub.createdAt);
         const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
         const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -35,34 +55,52 @@ export function RecentActivity({ submissions }: RecentActivityProps) {
         const typeLabel = sub.topic?.type === 'translation' ? '翻译' : '表达';
 
         return (
-          <div key={sub.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+          <div key={sub.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
                   {typeLabel}
-                </span>
-                <span className="text-sm text-gray-800 truncate">{topicLabel}</span>
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5 truncate">
-                {sub.transcribedText.slice(0, 50)}
-                {sub.transcribedText.length > 50 ? '...' : ''}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 ml-3 shrink-0">
-              {score != null && (
-                <span className={`text-sm font-semibold ${
-                  score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-500'
-                }`}>
-                  {score}
-                </span>
-              )}
-              <span className="text-xs text-gray-400">
+              </span>
+              <span className="text-xs text-gray-500">
                 {dateStr} {timeStr}
               </span>
             </div>
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs font-medium text-gray-500">题目</div>
+              <div className="mt-1 text-sm text-gray-800 break-words">{topicLabel}</div>
+            </div>
+
+            <div className="mt-3">
+              <div className="text-xs font-medium text-gray-500">本次提交</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-gray-900">
+                {sub.transcribedText}
+              </div>
+            </div>
+
+            {sub.rawAudioUrl && (
+              <div className="mt-4 flex">
+                <button
+                  onClick={() => void handlePlayUserAudio(sub)}
+                  className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 sm:w-auto"
+                >
+                  {playingAudioId === sub.id ? '播放我的录音中...' : '播放我的录音'}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
+      {submissions.length > 1 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((current) => !current)}
+          className="min-h-11 w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          {showAll ? '收起较早提交' : `展开另外 ${submissions.length - 1} 条提交`}
+        </button>
+      )}
     </div>
   );
 }

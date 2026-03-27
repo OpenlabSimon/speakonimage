@@ -31,14 +31,15 @@ ${character.persona}
 
 你需要返回 JSON，包含三个字段：
 
-1. **feedbackText**: 用于显示的反馈文本。2-4段，双语中英文自然切换。要具体引用评估中的分数、错误和优点。可以用 markdown 加粗。必须包含至少一个关于错误的幽默点评和至少一个真诚的鼓励。
+1. **feedbackText**: 用于显示的反馈文本。2-4段，双语中英文自然切换。要具体引用评估中的错误、亮点和下一步建议。可以用 markdown 加粗。必须包含至少一个关于错误的幽默点评和至少一个真诚的鼓励。不要提任何分数、百分比、等级字母或“几分”。
 
 2. **ttsText**: 用于语音朗读的版本。不要 markdown，不要特殊符号。用逗号和句号控制节奏。长度控制在 800 字符以内。要自然流畅，适合朗读。保持幽默感。
 
-3. **mood**: 你的整体情绪反应，根据总分判断：
-   - 80分以上: "impressed"
-   - 50-79分: "encouraging"
-   - 50分以下: "encouraging"（必须找到积极面，用幽默化解低分的压力）
+3. **mood**: 你的整体情绪反应，根据整体表现判断：
+   - 表达非常自然、亮点明显: "impressed"
+   - 有明显进步或值得鼓励: "encouraging"
+   - 错误比较集中，需要收一收再练: "tough-love"
+   - 信息不足或表现平稳: "neutral"
 
 ## 输入方式感知
 你会被告知学生是通过语音还是文字输入的。如果是语音输入：
@@ -49,7 +50,8 @@ ${character.persona}
 
 ## 重要规则
 - 必须双语，自然地在中英文之间切换
-- 要引用具体的评估数据（分数、语法错误、好的用词等）
+- 要引用具体的评估数据（语法错误、好的用词、表达亮点、遗漏点等）
+- 不要在 feedbackText 或 ttsText 中提分数、百分比、A/B/C/F、几分或“高/低多少分”
 - 对每个错误都要用有趣的比喻或玩笑来解释，让学生笑着学
 - 永远不要让学生感到被批评或嘲笑——你是在和错误开玩笑，不是和学生
 - feedbackText 可以稍长，ttsText 必须精简
@@ -59,16 +61,20 @@ ${character.persona}
 
 // Build user prompt with evaluation data
 export function buildCharacterizeUserPrompt(params: {
-  overallScore: number;
   evaluation: Record<string, unknown>;
   userResponse: string;
   topicType: string;
   chinesePrompt: string;
   inputMethod?: 'voice' | 'text';
 }): string {
-  const { overallScore, evaluation, userResponse, topicType, chinesePrompt, inputMethod = 'text' } = params;
+  const { evaluation, userResponse, topicType, chinesePrompt, inputMethod = 'text' } = params;
 
   const inputMethodLabel = inputMethod === 'voice' ? '语音输入（口语录音转写）' : '文字输入';
+  const sanitizedEvaluation = JSON.stringify(
+    evaluation,
+    (key, value) => (key === 'score' ? undefined : value),
+    2
+  );
 
   return `请根据以下评估结果，以你的角色身份给出反馈。
 
@@ -84,11 +90,8 @@ ${chinesePrompt}
 ## 学生的回答
 ${userResponse}
 
-## 总分
-${overallScore}/100
-
 ## 详细评估
-${JSON.stringify(evaluation, null, 2)}
+${sanitizedEvaluation}
 
 请返回 JSON 格式的反馈，包含 feedbackText, ttsText, mood 三个字段。只返回有效 JSON。`;
 }

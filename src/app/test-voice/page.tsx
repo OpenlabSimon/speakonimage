@@ -20,7 +20,6 @@ export default function TestVoicePage() {
   const [result, setResult] = useState<{
     transcription: string;
     audioUrl?: string;
-    overallScore?: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,12 +27,10 @@ export default function TestVoicePage() {
     transcription: string;
     audioUrl?: string;
     evaluation?: unknown;
-    overallScore?: number;
   }) => {
     setResult({
       transcription: data.transcription,
       audioUrl: data.audioUrl,
-      overallScore: data.overallScore,
     });
     console.log('Received result:', data);
   };
@@ -60,9 +57,6 @@ export default function TestVoicePage() {
           <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
             <h2 className="text-sm font-medium text-green-800 mb-2">Result:</h2>
             <p className="text-green-900 mb-2"><strong>Transcription:</strong> {result.transcription}</p>
-            {result.overallScore !== undefined && (
-              <p className="text-green-900 mb-2"><strong>Score:</strong> {result.overallScore}</p>
-            )}
             {result.audioUrl && (
               <div className="mt-2">
                 <strong className="text-green-800">Recording:</strong>

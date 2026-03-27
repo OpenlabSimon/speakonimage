@@ -47,7 +47,7 @@ ${character.persona}
    - 每回合结束有角色（${character.emoji} ${character.name}）的鼓励性评语（中英双语）
    - 不要像考试一样严肃，要有趣味性
    - 回合之间有过渡动画
-   - 最后显示总分和角色总结评语
+   - 最后显示完成总结和角色评语，不要做分数结算
 5. **右上角关闭按钮**：固定位置的 X 按钮，点击发送 game-exit 消息
 
 ## PostMessage 通信协议（必须实现）
@@ -62,7 +62,7 @@ window.parent.postMessage({ type: 'game-ready' }, '*');
 window.parent.postMessage({ type: 'game-progress', current: 1, total: 5 }, '*');
 
 // 游戏完成时
-window.parent.postMessage({ type: 'game-complete', score: 4, totalPossible: 5, mistakes: ['具体错误描述'] }, '*');
+window.parent.postMessage({ type: 'game-complete', completed: 4, totalPossible: 5, mistakes: ['具体错误描述'] }, '*');
 
 // 用户点击关闭按钮时
 window.parent.postMessage({ type: 'game-exit' }, '*');
@@ -87,12 +87,16 @@ window.parent.postMessage({ type: 'game-exit' }, '*');
 export function buildPracticeGameUserPrompt(params: {
   chinesePrompt: string;
   userResponse: string;
-  overallScore: number;
   cefrLevel: string;
   topicType: string;
   evaluation: Record<string, unknown>;
 }): string {
-  const { chinesePrompt, userResponse, overallScore, cefrLevel, topicType, evaluation } = params;
+  const { chinesePrompt, userResponse, cefrLevel, topicType, evaluation } = params;
+  const sanitizedEvaluation = JSON.stringify(
+    evaluation,
+    (key, value) => (key === 'score' ? undefined : value),
+    2
+  );
 
   return `请根据以下学生的评估结果，生成一个针对性的互动练习小游戏。
 
@@ -105,20 +109,17 @@ ${chinesePrompt}
 ## 学生的回答
 ${userResponse}
 
-## 总分
-${overallScore}/100
-
 ## 学生 CEFR 等级
 ${cefrLevel}
 
 ## 详细评估（包含具体错误）
-${JSON.stringify(evaluation, null, 2)}
+${sanitizedEvaluation}
 
 请分析学生的具体错误（语法错误、用词不当、表达不地道等），选择最合适的游戏类型，生成一个针对这些错误的趣味练习游戏。
 
 要求：
 - 游戏题目必须围绕学生实际犯的错误来设计
 - 难度要匹配学生的 CEFR 等级（${cefrLevel}）
-- 如果学生错误很少（高分），则设计词汇拓展或表达升级类的游戏
+- 如果学生错误很少，则设计词汇拓展或表达升级类的游戏
 - 返回有效 JSON，包含 gameHtml, gameType, focusAreas 三个字段`;
 }
